@@ -2,29 +2,30 @@
 #define NUM_BLOCKS 1024
 #define BLOCK_SIZE 4096
 #define FREE -1
-#define EOF -2
+#define EOF_BLOCK -2
 #define TYPE_FILE 1
 #define TYPE_DIRECTORY 2
 
-typedef struct {
+typedef struct Entry{
     char* name;
     int start_index;
     int size;
     int type;
     int num_files;
     int num_directories;
-    Entry* parent;
-    Entry* entries;
+    struct Entry* parent;
+    struct Entry** directories;
+    struct Entry** files;
 } Entry;
 
 typedef struct {
     int FAT[NUM_BLOCKS];
-    Entry* root;
+    Entry* current_dir;
     char* data;
 } FATFileSystem;
 
 typedef struct {
-    int index;
+    char* parent_name;
     int pos;
 } FileHandle;
 
