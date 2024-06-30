@@ -1,6 +1,6 @@
 #define MAX_NUM_FILES 100
 #define NUM_BLOCKS 1024
-#define BLOCK_SIZE 4096
+#define BLOCK_SIZE 40
 #define FREE -1
 #define EOF_BLOCK -2
 #define TYPE_FILE 1
@@ -26,6 +26,8 @@ typedef struct {
 typedef struct {
     char* name;
     char* parent_name;
+    int first_block;
+    int current_block;
     int last_block;
     int pos;
 } FileHandle;
@@ -33,8 +35,9 @@ typedef struct {
 FileHandle *createFile(FATFileSystem* fs, char *filename);
 void eraseFile(FATFileSystem* fs, FileHandle* fh);
 void writeFile(FATFileSystem* fs, FileHandle *fh, const void *buf, int size);
+void appendFile(FATFileSystem* fs, FileHandle* fh, const void *buf, int size);
 void readFile(FATFileSystem* fs, FileHandle *fh, void *buf, int size);
-void seekFile(FATFileSystem* fs, FileHandle *fh, int pos);
+void seekFile(FATFileSystem* fs, FileHandle *fh, int offset, int whence);
 void createDir(FATFileSystem* fs, const char *dirname);
 void eraseDir(FATFileSystem* fs, const char *dirname);
 void changeDir(FATFileSystem* fs, const char *dirname);
