@@ -6,6 +6,15 @@
 #define TYPE_FILE 1
 #define TYPE_DIRECTORY 2
 
+typedef struct {
+    char* name;
+    char* parent_name;
+    int first_block;
+    int current_block;
+    int last_block;
+    int pos;
+} FileHandle;
+
 typedef struct Entry{
     char* name;
     int start_index;
@@ -23,14 +32,6 @@ typedef struct {
     char* data;
 } FATFileSystem;
 
-typedef struct {
-    char* name;
-    char* parent_name;
-    int first_block;
-    int current_block;
-    int last_block;
-    int pos;
-} FileHandle;
 
 FileHandle *createFile(FATFileSystem* fs, char *filename);
 void eraseFile(FATFileSystem* fs, FileHandle* fh);
@@ -38,7 +39,7 @@ void writeFile(FATFileSystem* fs, FileHandle *fh, const void *buf, int size);
 void appendFile(FATFileSystem* fs, FileHandle* fh, const void *buf, int size);
 void readFile(FATFileSystem* fs, FileHandle *fh, void *buf, int size);
 void seekFile(FATFileSystem* fs, FileHandle *fh, int offset, int whence);
-void createDir(FATFileSystem* fs, const char *dirname);
-void eraseDir(FATFileSystem* fs, const char *dirname);
-void changeDir(FATFileSystem* fs, const char *dirname);
+void createDir(FATFileSystem* fs, char *dirname);
+void eraseDir(FATFileSystem* fs, char *dirname);
+void changeDir(FATFileSystem* fs, char *dirname);
 void listDir(FATFileSystem* fs);

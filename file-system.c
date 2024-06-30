@@ -18,7 +18,7 @@ FileHandle* createFile(FATFileSystem* fs, char *filename) {
 
     for (int i=0; i<current_dir->num_files; i++) {
         if (strcmp(current_dir->files_handlers[i]->name, filename)==0) {
-            printf("File already exists\n");
+            printf("File '%s' already exists in current directory\n", filename);
             return NULL;
         }
     }
@@ -54,7 +54,7 @@ FileHandle* createFile(FATFileSystem* fs, char *filename) {
 
 void eraseFile(FATFileSystem* fs, FileHandle* fh) {
     Entry* current_dir = fs->current_dir;
-
+    
     if (strcmp(current_dir->name, fh->parent_name) != 0) {
         printf("The file is not in this directory. Change to '%s' directory and try again\n", fh->parent_name);
         return;
@@ -70,13 +70,12 @@ void eraseFile(FATFileSystem* fs, FileHandle* fh) {
                 b = temp;
             } while (b != EOF_BLOCK);
 
-            free(fs->current_dir->files_handlers[i]);
-
             for (int j = i; j < fs->current_dir->num_files - 1; j++) {
                 fs->current_dir->files_handlers[j] = fs->current_dir->files_handlers[j + 1];
             }
+            fs->current_dir->files_handlers[fs->current_dir->num_files-1] = NULL;
             current_dir->num_files--;
-
+            
             free(fh);
 
             return;
@@ -85,6 +84,11 @@ void eraseFile(FATFileSystem* fs, FileHandle* fh) {
 }
 
 void writeFile(FATFileSystem* fs, FileHandle *fh, const void *buf, int size) {
+    if (fh == NULL) {
+        printf("Invalid file\n");
+        return;
+    }
+
     if (strcmp(fs->current_dir->name, fh->parent_name) != 0) {
         printf("The file is not in this directory. Change to '%s' directory and try again\n", fh->parent_name);
         return;
@@ -133,6 +137,12 @@ void writeFile(FATFileSystem* fs, FileHandle *fh, const void *buf, int size) {
 }
 
 void appendFile(FATFileSystem* fs, FileHandle *fh, const void *buf, int size) {
+
+    if (fh == NULL) {
+        printf("Invalid file\n");
+        return;
+    }
+
     if (strcmp(fs->current_dir->name, fh->parent_name) != 0) {
         printf("The file is not in this directory. Change to '%s' directory and try again\n", fh->parent_name);
         return;
@@ -153,13 +163,13 @@ void appendFile(FATFileSystem* fs, FileHandle *fh, const void *buf, int size) {
     //Writing 
 
     if (size < BLOCK_SIZE - offset) {
-        memcpy (fs->data + (fh->current_block * BLOCK_SIZE) + offset, buf, size);
+        memcpy (fs->data + (fh->current_block * BLOCK_SIZE) + offset-1, buf, size);
         fh->pos += size;
         return;
     }
 
-    memcpy (fs->data + (fh->current_block * BLOCK_SIZE) + offset-1, buf, BLOCK_SIZE - offset);
-    int written_bytes = (BLOCK_SIZE - offset);
+    memcpy (fs->data + (fh->current_block * BLOCK_SIZE) + offset-1, buf, BLOCK_SIZE - offset+1);
+    int written_bytes = (BLOCK_SIZE - offset + 1);
     fh->pos += written_bytes;
     size -= written_bytes;
 
@@ -182,7 +192,7 @@ void appendFile(FATFileSystem* fs, FileHandle *fh, const void *buf, int size) {
         }
 
         int left_bytes = (size > BLOCK_SIZE) ? BLOCK_SIZE : size;
-        memcpy (fs->data + (fh->last_block * BLOCK_SIZE)-1, buf + written_bytes, left_bytes);
+        memcpy (fs->data + (fh->last_block * BLOCK_SIZE), buf + written_bytes, left_bytes);
         written_bytes += left_bytes;
         size -= left_bytes;
         fh->pos += left_bytes;
@@ -190,6 +200,12 @@ void appendFile(FATFileSystem* fs, FileHandle *fh, const void *buf, int size) {
 }
 
 void readFile(FATFileSystem* fs, FileHandle *fh, void *buf, int size) {
+
+    if (fh == NULL) {
+        printf("Invalid file\n");
+        return;
+    }
+
     if (strcmp(fs->current_dir->name, fh->parent_name) != 0) {
         printf("The file is not in this directory. Change to '%s' directory and try again\n", fh->parent_name);
         return;
@@ -208,12 +224,11 @@ void readFile(FATFileSystem* fs, FileHandle *fh, void *buf, int size) {
     }
 
     memcpy(buf, fs->data + (fh->current_block * BLOCK_SIZE) + offset, BLOCK_SIZE - offset);
-    int read_bytes = BLOCK_SIZE - offset;
+    int read_bytes = BLOCK_SIZE - offset; 
     fh->pos += read_bytes;
     size -= read_bytes;
 
-    while (size > 0) {   
-        if (fs->FAT[fh->current_block] == EOF_BLOCK) return;   
+    while (size > 0) {      
         int block = fh->current_block;
         fh->current_block = fs->FAT[block];
 
@@ -222,17 +237,29 @@ void readFile(FATFileSystem* fs, FileHandle *fh, void *buf, int size) {
         read_bytes += left_bytes;
         size -= left_bytes;
         fh->pos += left_bytes;
+
+        if (fh->current_block == fh->last_block) return;
     }
 }
 
 void seekFile(FATFileSystem* fs, FileHandle *fh, int offset, int whence) {
+
+    if (fh == NULL) {
+        printf("Invalid file\n");
+        return;
+    }
+
     if (strcmp(fs->current_dir->name, fh->parent_name) != 0) {
         printf("The file is not in this directory. Change to '%s' directory and try again\n", fh->parent_name);
         return;
     }
 
+    if (*(fs->data + fh->first_block * BLOCK_SIZE) == '\0') {
+        return;        
+    }
+
     //whence == 0 -> initial_position
-    if (whence == 0) {
+    if (whence == 0) {   
         fh->pos = 0;
         fh->current_block = fh->first_block;
 
@@ -277,17 +304,16 @@ void seekFile(FATFileSystem* fs, FileHandle *fh, int offset, int whence) {
     }
 }
 
-void createDir(FATFileSystem* fs, const char *dirname) {
-    Entry* current_dir = fs->current_dir;
-    if (current_dir->num_directories == MAX_NUM_FILES) {
+void createDir(FATFileSystem* fs, char *dirname) {
+    if (fs->current_dir->num_directories == MAX_NUM_FILES) {
         printf("Current directory is full\n");
-        return NULL;
+        return;
     };
 
-    for (int i=0; i<current_dir->num_directories; i++) {
-        if (strcmp(current_dir->directories[i]->name, dirname)==0) {
-            printf("Directory already exists\n");
-            return NULL;
+    for (int i=0; i<fs->current_dir->num_directories; i++) {
+        if (strcmp(fs->current_dir->directories[i]->name, dirname)==0) {
+            printf("Directory '%s' already exists in current directory\n", dirname);
+            return;
         }
     }
 
@@ -298,15 +324,15 @@ void createDir(FATFileSystem* fs, const char *dirname) {
     new_entry->num_files = 0;
     new_entry->num_directories = 0;
     new_entry->parent = fs->current_dir;
-    fs->current_dir->directories = (Entry**) malloc(MAX_NUM_FILES * sizeof(Entry*));
-    fs->current_dir->files_handlers = (FileHandle**) malloc(MAX_NUM_FILES * sizeof(Entry*));
+    new_entry->directories = (Entry**) malloc(MAX_NUM_FILES * sizeof(Entry*));
+    new_entry->files_handlers = (FileHandle**) malloc(MAX_NUM_FILES * sizeof(FileHandle*));
 
 
     fs->current_dir->directories[fs->current_dir->num_directories] = new_entry;
     fs->current_dir->num_directories++;
 }
 
-void eraseDir(FATFileSystem* fs, const char *dirname) {
+void eraseDir(FATFileSystem* fs, char *dirname) {
     Entry* current_dir = fs->current_dir;
 
     int ok = 0;
@@ -332,6 +358,7 @@ void eraseDir(FATFileSystem* fs, const char *dirname) {
             for (int k = i; k < fs->current_dir->num_directories - 1; k++) {
                 fs->current_dir->directories[k] = fs->current_dir->directories[k + 1];
             }
+            fs->current_dir->directories[fs->current_dir->num_directories-1] = NULL;
             fs->current_dir->num_directories--;
             
             ok = 1;
@@ -342,5 +369,48 @@ void eraseDir(FATFileSystem* fs, const char *dirname) {
     if (!ok) {
         printf("No directory called '%s' in current directory!\n", dirname);
         return;
+    }
+}
+
+void changeDir(FATFileSystem* fs, char *dirname) {
+    Entry* current_dir = fs->current_dir;
+
+    if (strcmp(dirname, ".") == 0) {
+        return;
+    }
+
+    if (strcmp(dirname, "..") == 0) {
+        fs->current_dir = current_dir->parent;
+        return;
+    }
+    
+    int ok = 0;
+    for (int i=0; i<current_dir->num_directories; i++) {
+        if (strcmp(current_dir->directories[i]->name, dirname)==0) {
+            fs->current_dir = current_dir->directories[i];
+            ok = 1;
+            break;
+        }
+    }
+
+    if (!ok) {
+        printf("No directory called '%s' in current directory!\n", dirname);
+        return;
+    }
+}
+
+void listDir(FATFileSystem* fs) {
+    Entry* current_dir = fs->current_dir;
+
+    printf("Directories inside '%s' directory:\n", current_dir->name);
+
+    for (int i = 0; i < current_dir->num_directories; i++) {
+        printf("%s\n", current_dir->directories[i]->name);
+    }
+
+    printf("Files inside '%s' directory:\n", current_dir->name);
+
+    for (int j = 0; j < current_dir->num_files; j++) {
+        printf("%s\n", current_dir->files_handlers[j]->name);
     }
 }
