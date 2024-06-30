@@ -26,7 +26,7 @@ int main(int argc, char *argv[]) {
     fs->current_dir->num_directories = 0;
     fs->current_dir->parent = NULL;
     fs->current_dir->directories = (Entry**) malloc(MAX_NUM_FILES * sizeof(Entry*));
-    fs->current_dir->files = (Entry**) malloc(MAX_NUM_FILES * sizeof(Entry*));
+    fs->current_dir->files_handlers = (FileHandle**) malloc(MAX_NUM_FILES * sizeof(Entry*));
 
     FileHandle* f1 = createFile(fs, "file1.txt");
    
@@ -52,10 +52,10 @@ int main(int argc, char *argv[]) {
     }
     printf("]\n");*/
 
-    for (int i=0; i<NUM_BLOCKS*20; i++) {
+    /*for (int i=0; i<NUM_BLOCKS*20; i++) {
         printf("%c, ", fs->data[i]);
     }
-    printf("\n");
+    printf("\n");*/
 
     //eraseFile(fs,f2);
 
@@ -74,7 +74,8 @@ int main(int argc, char *argv[]) {
     //char* buf2 = (char*) malloc(200);
     
     //readFile(fs, f2, buf2, 100);
-    seekFile(fs, f1, -10ck, 2);
+    seekFile(fs, f1, 90, 0);
+    seekFile(fs, f1, -56, 1);
     readFile(fs, f1, buf1, 300);
 
     while(*buf1) {

@@ -17,7 +17,7 @@ FileHandle* createFile(FATFileSystem* fs, char *filename) {
     };
 
     for (int i=0; i<current_dir->num_files; i++) {
-        if (strcmp(current_dir->files[i]->name, filename)==0) {
+        if (strcmp(current_dir->files_handlers[i]->name, filename)==0) {
             printf("File already exists\n");
             return NULL;
         }
@@ -37,23 +37,17 @@ FileHandle* createFile(FATFileSystem* fs, char *filename) {
         return NULL;
     }
 
-    Entry* new_entry = (Entry*) malloc(sizeof(Entry));
-    new_entry->name = filename;
-    new_entry->start_index = block_found;
-    new_entry->type = TYPE_FILE;
-    new_entry->parent = current_dir;
-
-    fs->current_dir->files[fs->current_dir->num_files] = new_entry;
-    fs->current_dir->num_files++;
-    if (fs->current_dir->start_index == -1) fs->current_dir->start_index = new_entry->start_index;
-
     FileHandle* entryfh = (FileHandle*) malloc (sizeof (FileHandle));
-    entryfh->name = new_entry->name;
+    entryfh->name = filename;
     entryfh->parent_name = current_dir->name;
     entryfh->first_block = block_found;
     entryfh->current_block = block_found;
     entryfh->last_block = block_found;
     entryfh->pos = 0;
+
+    fs->current_dir->files_handlers[fs->current_dir->num_files] = entryfh;
+    fs->current_dir->num_files++;
+    if (fs->current_dir->start_index == -1) fs->current_dir->start_index = entryfh->first_block;
 
     return entryfh;
 }
@@ -67,8 +61,8 @@ void eraseFile(FATFileSystem* fs, FileHandle* fh) {
     }
 
     for (int i=0; i<current_dir->num_files; i++) {
-        if (strcmp(current_dir->files[i]->name, fh->name)==0) {
-            int b = current_dir->files[i]->start_index;
+        if (strcmp(current_dir->files_handlers[i]->name, fh->name)==0) {
+            int b = current_dir->files_handlers[i]->first_block;
             do {
                 int temp = fs->FAT[b];
                 memset(fs->data+(b*BLOCK_SIZE),'\0', BLOCK_SIZE);
@@ -76,10 +70,10 @@ void eraseFile(FATFileSystem* fs, FileHandle* fh) {
                 b = temp;
             } while (b != EOF_BLOCK);
 
-            free(fs->current_dir->files[i]);
+            free(fs->current_dir->files_handlers[i]);
 
             for (int j = i; j < fs->current_dir->num_files - 1; j++) {
-                fs->current_dir->files[j] = fs->current_dir->files[j + 1];
+                fs->current_dir->files_handlers[j] = fs->current_dir->files_handlers[j + 1];
             }
             current_dir->num_files--;
 
@@ -246,11 +240,12 @@ void seekFile(FATFileSystem* fs, FileHandle *fh, int offset, int whence) {
         
         while (offset > 0) {
             int block = fh->current_block;
-            if (fs->FAT[block] == EOF_BLOCK) return;
+            if (block == EOF_BLOCK) return;
             
-            if (offset > BLOCK_SIZE+1) fh->current_block = fs->FAT[block];
-            offset -= (offset > BLOCK_SIZE+1) ? BLOCK_SIZE+1 : offset;
-            fh->pos += (offset > BLOCK_SIZE+1) ? BLOCK_SIZE+1 : offset;
+            if (offset > BLOCK_SIZE) fh->current_block = fs->FAT[block];
+            int val = (offset > BLOCK_SIZE) ? BLOCK_SIZE+1 : offset;
+            offset -= val;
+            fh->pos += val;
         }
     }
 
@@ -279,5 +274,73 @@ void seekFile(FATFileSystem* fs, FileHandle *fh, int offset, int whence) {
         if (offset >= 0) return;
 
         seekFile(fs, fh, fh->pos + offset, 0);
+    }
+}
+
+void createDir(FATFileSystem* fs, const char *dirname) {
+    Entry* current_dir = fs->current_dir;
+    if (current_dir->num_directories == MAX_NUM_FILES) {
+        printf("Current directory is full\n");
+        return NULL;
+    };
+
+    for (int i=0; i<current_dir->num_directories; i++) {
+        if (strcmp(current_dir->directories[i]->name, dirname)==0) {
+            printf("Directory already exists\n");
+            return NULL;
+        }
+    }
+
+    Entry* new_entry = (Entry*) malloc(sizeof(Entry));
+    new_entry->name = dirname;
+    new_entry->start_index = -1;
+    new_entry->type = TYPE_DIRECTORY;
+    new_entry->num_files = 0;
+    new_entry->num_directories = 0;
+    new_entry->parent = fs->current_dir;
+    fs->current_dir->directories = (Entry**) malloc(MAX_NUM_FILES * sizeof(Entry*));
+    fs->current_dir->files_handlers = (FileHandle**) malloc(MAX_NUM_FILES * sizeof(Entry*));
+
+
+    fs->current_dir->directories[fs->current_dir->num_directories] = new_entry;
+    fs->current_dir->num_directories++;
+}
+
+void eraseDir(FATFileSystem* fs, const char *dirname) {
+    Entry* current_dir = fs->current_dir;
+
+    int ok = 0;
+    for (int i=0; i<current_dir->num_directories; i++) {
+        if (strcmp(current_dir->directories[i]->name, dirname)==0) {
+            Entry* dir = current_dir->directories[i];
+            fs->current_dir = dir;
+            
+            for (int j=0; j<dir->num_files; j++) {
+                eraseFile(fs, dir->files_handlers[j]);
+            }
+
+            for (int j=0; j<dir->num_directories; j++) {
+                eraseDir(fs, dir->directories[j]->name);
+            }
+
+            free(dir->directories);
+            free(dir->files_handlers);
+            free(dir);
+
+            fs->current_dir = current_dir;
+
+            for (int k = i; k < fs->current_dir->num_directories - 1; k++) {
+                fs->current_dir->directories[k] = fs->current_dir->directories[k + 1];
+            }
+            fs->current_dir->num_directories--;
+            
+            ok = 1;
+            break;
+        }
+    }
+
+    if (!ok) {
+        printf("No directory called '%s' in current directory!\n", dirname);
+        return;
     }
 }

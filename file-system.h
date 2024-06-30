@@ -14,7 +14,7 @@ typedef struct Entry{
     int num_directories;
     struct Entry* parent;
     struct Entry** directories;
-    struct Entry** files;
+    FileHandle** files_handlers;
 } Entry;
 
 typedef struct {
