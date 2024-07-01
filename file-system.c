@@ -8,6 +8,60 @@
 #include <fcntl.h>
 
 #include "file-system.h"
+
+FATFileSystem* startFileSystem() {
+    FATFileSystem* fs = (FATFileSystem*) malloc (sizeof (FATFileSystem));
+    memset (fs->FAT, FREE, sizeof(fs->FAT));
+    int fd = open ("filesystem", O_RDWR | O_CREAT, 0666);
+    
+    if (fd == -1) {
+        perror("Error opening filesystem");
+        exit(EXIT_FAILURE);
+    }
+
+    if (ftruncate(fd, BLOCK_SIZE*NUM_BLOCKS) == -1) {
+        perror("Error truncating filesystem");
+        exit(EXIT_FAILURE);
+    }
+
+    fs->data = mmap(NULL, NUM_BLOCKS*BLOCK_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+    if (fs->data == MAP_FAILED) {
+        perror("Error mapping filesystem");
+        exit(EXIT_FAILURE);
+    }
+
+    memset(fs->data, '\0', BLOCK_SIZE*NUM_BLOCKS);
+    
+    if (close(fd) == -1) {
+        perror("Error closing filesystem");
+        exit(EXIT_FAILURE);
+    }
+
+    fs->current_dir = (Entry*) malloc (sizeof(Entry));
+    fs->current_dir->name = "root";
+    fs->current_dir->start_index = -1;
+    fs->current_dir->type = TYPE_DIRECTORY;
+    fs->current_dir->num_files = 0;
+    fs->current_dir->num_directories = 0;
+    fs->current_dir->parent = fs->current_dir;
+    fs->current_dir->directories = (Entry**) malloc(MAX_NUM_FILES * sizeof(Entry*));
+    fs->current_dir->files_handlers = (FileHandle**) malloc(MAX_NUM_FILES * sizeof(FileHandle*));
+
+    return fs;
+}
+
+void endFileSystem(FATFileSystem* fs) {
+    free(fs->current_dir->directories);
+    free(fs->current_dir->files_handlers);
+    free(fs->current_dir);
+    
+    if (munmap(fs->data, NUM_BLOCKS*BLOCK_SIZE) == -1) {
+        perror("Error unmapping filesystem");
+        exit(EXIT_FAILURE);
+    }
+
+    free(fs);
+}
  
 FileHandle* createFile(FATFileSystem* fs, char *filename) {
     Entry* current_dir = fs->current_dir;
@@ -23,6 +77,7 @@ FileHandle* createFile(FATFileSystem* fs, char *filename) {
         }
     }
 
+    //Finding free block
     int block_found = -1;
     for (int i=0; i<NUM_BLOCKS; i++) {
         if (fs->FAT[i]==FREE) {
@@ -37,6 +92,7 @@ FileHandle* createFile(FATFileSystem* fs, char *filename) {
         return NULL;
     }
 
+    //Creating file handler
     FileHandle* entryfh = (FileHandle*) malloc (sizeof (FileHandle));
     entryfh->name = filename;
     entryfh->parent_name = current_dir->name;
@@ -53,6 +109,11 @@ FileHandle* createFile(FATFileSystem* fs, char *filename) {
 }
 
 void eraseFile(FATFileSystem* fs, FileHandle* fh) {
+    if (fh == NULL) {
+        printf("Invalid file\n");
+        return;
+    }
+
     Entry* current_dir = fs->current_dir;
     
     if (strcmp(current_dir->name, fh->parent_name) != 0) {
@@ -63,6 +124,8 @@ void eraseFile(FATFileSystem* fs, FileHandle* fh) {
     for (int i=0; i<current_dir->num_files; i++) {
         if (strcmp(current_dir->files_handlers[i]->name, fh->name)==0) {
             int b = current_dir->files_handlers[i]->first_block;
+            
+            //Freeing all blocks
             do {
                 int temp = fs->FAT[b];
                 memset(fs->data+(b*BLOCK_SIZE),'\0', BLOCK_SIZE);
@@ -70,6 +133,7 @@ void eraseFile(FATFileSystem* fs, FileHandle* fh) {
                 b = temp;
             } while (b != EOF_BLOCK);
 
+            //Freeing file handler
             for (int j = i; j < fs->current_dir->num_files - 1; j++) {
                 fs->current_dir->files_handlers[j] = fs->current_dir->files_handlers[j + 1];
             }
@@ -94,7 +158,7 @@ void writeFile(FATFileSystem* fs, FileHandle *fh, const void *buf, int size) {
         return;
     }
 
-    //Cleaning the file
+    //Cleaning the previous contents of the file
     int i = fh->first_block;
     while (i != EOF_BLOCK) {
         memset(fs->data + (i * BLOCK_SIZE), '\0', BLOCK_SIZE);
@@ -103,6 +167,7 @@ void writeFile(FATFileSystem* fs, FileHandle *fh, const void *buf, int size) {
         i = temp;
     }
 
+    //Writing from the beginning 
     fh->pos = 0;
     int initial_position = fh->pos;
     fh->last_block = fh->first_block;
@@ -151,7 +216,7 @@ void appendFile(FATFileSystem* fs, FileHandle *fh, const void *buf, int size) {
     int initial_position = fh->pos;
     int offset = fh->pos % BLOCK_SIZE;
 
-    //Cleaning the file after position 
+    //Cleaning the previous contents of the file after current position
     int i = fh->current_block;
     while (i != EOF_BLOCK) {
         (i == fh->current_block)? memset(fs->data + (i * BLOCK_SIZE) + offset, '\0', BLOCK_SIZE - offset) : memset(fs->data + (i * BLOCK_SIZE), '\0', BLOCK_SIZE);
@@ -160,8 +225,7 @@ void appendFile(FATFileSystem* fs, FileHandle *fh, const void *buf, int size) {
         i = temp;
     }
 
-    //Writing 
-
+    //Writing from current position
     if (size < BLOCK_SIZE - offset) {
         memcpy (fs->data + (fh->current_block * BLOCK_SIZE) + offset-1, buf, size);
         fh->pos += size;
@@ -317,6 +381,7 @@ void createDir(FATFileSystem* fs, char *dirname) {
         }
     }
 
+    //Creating new directory
     Entry* new_entry = (Entry*) malloc(sizeof(Entry));
     new_entry->name = dirname;
     new_entry->start_index = -1;
@@ -340,15 +405,18 @@ void eraseDir(FATFileSystem* fs, char *dirname) {
         if (strcmp(current_dir->directories[i]->name, dirname)==0) {
             Entry* dir = current_dir->directories[i];
             fs->current_dir = dir;
+        
+            //Deleting files inside the directory
+            while (fs->current_dir->num_files > 0) {
+                eraseFile(fs, fs->current_dir->files_handlers[0]);
+            }
             
-            for (int j=0; j<dir->num_files; j++) {
-                eraseFile(fs, dir->files_handlers[j]);
+            //Deleting directories inside the directory
+            while (fs->current_dir->num_directories > 0) {
+                eraseDir(fs, fs->current_dir->directories[0]->name);
             }
 
-            for (int j=0; j<dir->num_directories; j++) {
-                eraseDir(fs, dir->directories[j]->name);
-            }
-
+            //Freeing the directory
             free(dir->directories);
             free(dir->files_handlers);
             free(dir);
@@ -375,10 +443,12 @@ void eraseDir(FATFileSystem* fs, char *dirname) {
 void changeDir(FATFileSystem* fs, char *dirname) {
     Entry* current_dir = fs->current_dir;
 
+    // dirname == "." -> remain in current directory
     if (strcmp(dirname, ".") == 0) {
         return;
     }
 
+    // dirname == ".." -> move up to parent directory
     if (strcmp(dirname, "..") == 0) {
         fs->current_dir = current_dir->parent;
         return;
@@ -402,12 +472,14 @@ void changeDir(FATFileSystem* fs, char *dirname) {
 void listDir(FATFileSystem* fs) {
     Entry* current_dir = fs->current_dir;
 
+    //Listing directories inside current directory
     printf("Directories inside '%s' directory:\n", current_dir->name);
 
     for (int i = 0; i < current_dir->num_directories; i++) {
         printf("%s\n", current_dir->directories[i]->name);
     }
 
+    //Listing files inside current directory
     printf("Files inside '%s' directory:\n", current_dir->name);
 
     for (int j = 0; j < current_dir->num_files; j++) {

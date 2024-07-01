@@ -11,27 +11,8 @@
 int main(int argc, char *argv[]) {
     
     //Initialize the filesystem
-    FATFileSystem* fs = (FATFileSystem*) malloc (sizeof (FATFileSystem));
-    memset (fs->FAT, FREE, sizeof(fs->FAT));
-    int fd = open ("filesystem", O_RDWR | O_CREAT, 0666);
-    ftruncate(fd, BLOCK_SIZE*NUM_BLOCKS);
-    fs->data = mmap(NULL, NUM_BLOCKS*BLOCK_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-    memset(fs->data, '\0', BLOCK_SIZE*NUM_BLOCKS);
-    close (fd);
+    FATFileSystem* fs = startFileSystem();
 
-    fs->current_dir = (Entry*) malloc (sizeof(Entry));
-    fs->current_dir->name = "root";
-    fs->current_dir->start_index = -1;
-    fs->current_dir->type = TYPE_DIRECTORY;
-    fs->current_dir->num_files = 0;
-    fs->current_dir->num_directories = 0;
-    fs->current_dir->parent = fs->current_dir;
-    fs->current_dir->directories = (Entry**) malloc(MAX_NUM_FILES * sizeof(Entry*));
-    fs->current_dir->files_handlers = (FileHandle**) malloc(MAX_NUM_FILES * sizeof(FileHandle*));
-
-    
-    
-    
     //TEST createFILE 
     FileHandle* f1 = createFile(fs, "file1.txt");
     FileHandle* f2 = createFile(fs, "file2.txt");
@@ -81,6 +62,7 @@ int main(int argc, char *argv[]) {
     //TEST readFile and seekFile 
     seekFile(fs, f1, 0, 0);
     seekFile(fs,f3, -536, 2);
+    seekFile(fs, f2, 2, 1);
 
     char* buf1 = (char*) malloc (1305);
     char* buf2 = (char*) malloc (540);
@@ -92,9 +74,9 @@ int main(int argc, char *argv[]) {
         printf("%c", *buf1);
         buf1++;
     }
-    printf("\n");*/
+    printf("\n");
 
-    /*while (*buf2) {
+    while (*buf2) {
         printf("%c", *buf2);
         buf2++;
     }
@@ -140,6 +122,12 @@ int main(int argc, char *argv[]) {
     changeDir(fs, "dir6");
     writeFile(fs, f7, " pensò. Non era un sogno. La sua camera, una stanzetta di giuste proporzioni, soltanto un po’ piccola, se ne stava tranquilla fra le quattro ben note pareti. Sulla tavola, un campionario disfatto di tessuti - Samsa era commesso viaggiatore e sopra, appeso alla parete, un ritratto, ritagliato da lui - non era molto - da una rivista illustrata e messo dentro una bella cornice dorata: raffigurava una donna seduta, ma ben dritta sul busto, con un berretto e un boa di pelliccia; essa levava incontro a chi guardava un pesante manicotto, in cui scompariva tutto l’avambraccio.", 581);
 
+    /*printf("[");
+    for (int i=0; i<NUM_BLOCKS; i++) {
+        printf("%d, ", fs->FAT[i]);
+    }
+    printf("]\n");
+    
     /*for (int i=0; i<NUM_BLOCKS*5; i++) {
         printf("%c, ", fs->data[i]);
     }
@@ -165,11 +153,6 @@ int main(int argc, char *argv[]) {
     eraseFile(fs, f3);
     eraseFile(fs, f4);
  
-
     free(buf1); free(buf2);
-    free(fs->current_dir->directories);
-    free(fs->current_dir->files_handlers);
-    free(fs->current_dir);
-    munmap(fs->data, NUM_BLOCKS*BLOCK_SIZE);
-    free(fs);
+    endFileSystem(fs);
 }

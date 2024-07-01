@@ -33,7 +33,9 @@ typedef struct {
 } FATFileSystem;
 
 
-FileHandle *createFile(FATFileSystem* fs, char *filename);
+FATFileSystem* startFileSystem();
+void endFileSystem(FATFileSystem* fs);
+FileHandle* createFile(FATFileSystem* fs, char *filename);
 void eraseFile(FATFileSystem* fs, FileHandle* fh);
 void writeFile(FATFileSystem* fs, FileHandle *fh, const void *buf, int size);
 void appendFile(FATFileSystem* fs, FileHandle* fh, const void *buf, int size);
