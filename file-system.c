@@ -39,8 +39,6 @@ FATFileSystem* startFileSystem() {
 
     fs->current_dir = (Entry*) malloc (sizeof(Entry));
     fs->current_dir->name = "root";
-    fs->current_dir->start_index = -1;
-    fs->current_dir->type = TYPE_DIRECTORY;
     fs->current_dir->num_files = 0;
     fs->current_dir->num_directories = 0;
     fs->current_dir->parent = fs->current_dir;
@@ -103,7 +101,6 @@ FileHandle* createFile(FATFileSystem* fs, char *filename) {
 
     fs->current_dir->files_handlers[fs->current_dir->num_files] = entryfh;
     fs->current_dir->num_files++;
-    if (fs->current_dir->start_index == -1) fs->current_dir->start_index = entryfh->first_block;
 
     return entryfh;
 }
@@ -384,8 +381,6 @@ void createDir(FATFileSystem* fs, char *dirname) {
     //Creating new directory
     Entry* new_entry = (Entry*) malloc(sizeof(Entry));
     new_entry->name = dirname;
-    new_entry->start_index = -1;
-    new_entry->type = TYPE_DIRECTORY;
     new_entry->num_files = 0;
     new_entry->num_directories = 0;
     new_entry->parent = fs->current_dir;

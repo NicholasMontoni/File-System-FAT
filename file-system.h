@@ -3,8 +3,6 @@
 #define BLOCK_SIZE 40
 #define FREE -1
 #define EOF_BLOCK -2
-#define TYPE_FILE 1
-#define TYPE_DIRECTORY 2
 
 typedef struct {
     char* name;
@@ -17,8 +15,6 @@ typedef struct {
 
 typedef struct Entry{
     char* name;
-    int start_index;
-    int type;
     int num_files;
     int num_directories;
     struct Entry* parent;
