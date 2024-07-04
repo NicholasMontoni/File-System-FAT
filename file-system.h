@@ -5,34 +5,36 @@
 #define EOF_BLOCK -2
 
 typedef struct {
+    int* free_list;
+    int* FAT;
+    int free_blocks;
+} FATStruct;
+
+typedef struct {
+    FATStruct* FAT;
+    char* data;
+} FATFileSystem;
+
+typedef struct {
     char* name;
-    char* parent_name;
+    int parent_block;
     int first_block;
     int current_block;
     int last_block;
     int pos;
 } FileHandle;
 
-typedef struct Entry{
-    char* name;
-    int num_files;
-    int num_directories;
-    struct Entry* parent;
-    struct Entry** directories;
-    FileHandle** files_handlers;
-} Entry;
-
 typedef struct {
-    int FAT[NUM_BLOCKS];
-    Entry* current_dir;
-    char* data;
-} FATFileSystem;
+    FATFileSystem* FATfs;
+    int current_dir;
+} FileSystem;
 
 
-FATFileSystem* startFileSystem();
+FileSystem* loadFileSystem(char* name, int size_requested);
 void endFileSystem(FATFileSystem* fs);
 FileHandle* createFile(FATFileSystem* fs, char *filename);
 void eraseFile(FATFileSystem* fs, FileHandle* fh);
+//OPEN FILE missing
 void writeFile(FATFileSystem* fs, FileHandle *fh, const void *buf, int size);
 void appendFile(FATFileSystem* fs, FileHandle* fh, const void *buf, int size);
 void readFile(FATFileSystem* fs, FileHandle *fh, void *buf, int size);

@@ -1,54 +1,89 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 #include <sys/mman.h>
 #include <sys/types.h>
 #include <sys/stat.h>
-#include <unistd.h>
 #include <fcntl.h>
 
 #include "file-system.h"
 
-FATFileSystem* startFileSystem() {
-    FATFileSystem* fs = (FATFileSystem*) malloc (sizeof (FATFileSystem));
-    memset (fs->FAT, FREE, sizeof(fs->FAT));
-    int fd = open ("filesystem", O_RDWR | O_CREAT, 0666);
+int allocate (FATFileSystem* fs) {
+    int block = *(fs->FAT->free_list);
+    fs->FAT->free_blocks--;
+    fs->FAT->free_list++;
+    return block;
+}
+
+void freeblock (FATFileSystem* fs, int block) {
+    fs->FAT->free_blocks++;
+    fs->FAT->free_list--;
+    *fs->FAT->free_list= block;
+}
+
+FileSystem* loadFileSystem(char* name, int size_requested) {
+    int blocks_required = (size_requested + BLOCK_SIZE -1) /BLOCK_SIZE;
+    int total_size = sizeof(FATFileSystem) + sizeof(FATStruct) + blocks_required*8 + size_requested; 
+    
+    FileSystem* fs = (FileSystem*) malloc(sizeof(FileSystem));
+    fs->current_dir = 0;
+
+    int fd = open (name, O_RDWR | O_CREAT, 0666);
     
     if (fd == -1) {
         perror("Error opening filesystem");
         exit(EXIT_FAILURE);
     }
 
-    if (ftruncate(fd, BLOCK_SIZE*NUM_BLOCKS) == -1) {
-        perror("Error truncating filesystem");
-        exit(EXIT_FAILURE);
+    int len = lseek(fd, 0, SEEK_END);
+    lseek(fd, 0, SEEK_SET);
+
+//Filesystem is not empty
+    if (len > 0) { 
+        fs->FATfs = (FATFileSystem*) mmap(NULL, len, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);   
+        if (fs->FATfs == MAP_FAILED) {
+            perror("Error mapping filesystem");
+            exit(EXIT_FAILURE);
+        }        
+
+        //Not enough space left in filesystem        
+        if (fs->FATfs->FAT->free_blocks < blocks_required) {
+            printf ("Space left in this file system is not enough. Bytes left = %d\n", fs->FATfs->FAT->free_blocks * BLOCK_SIZE);    
+        }
     }
 
-    fs->data = mmap(NULL, NUM_BLOCKS*BLOCK_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-    if (fs->data == MAP_FAILED) {
-        perror("Error mapping filesystem");
-        exit(EXIT_FAILURE);
+//Empty filesystem
+    else {
+        if (ftruncate(fd, total_size) == -1) {
+            perror("Error truncating filesystem");
+            exit(EXIT_FAILURE);
+        }
+
+        fs->FATfs = (FATFileSystem*) mmap(NULL, total_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+        if (fs->FATfs == MAP_FAILED) {
+            perror("Error mapping filesystem");
+            exit(EXIT_FAILURE);
+        }
+
+        char* start_ptr = (char*)fs->FATfs + sizeof(FATFileSystem);
+        fs->FATfs->FAT = (FATStruct*) start_ptr;
+        fs->FATfs->FAT->free_list = (int*)(start_ptr + sizeof(FATStruct));
+        fs->FATfs->FAT->FAT = (int*)(start_ptr + sizeof(FATStruct) + blocks_required*4);
+        fs->FATfs->FAT->free_blocks = blocks_required;
+
+        for (int i=0; i<blocks_required; i++) {
+            fs->FATfs->FAT->free_list[i] = i;
+        }
+
+        memset(fs->FATfs->FAT->FAT, FREE, blocks_required*4);
     }
 
-    memset(fs->data, '\0', BLOCK_SIZE*NUM_BLOCKS);
-    
-    if (close(fd) == -1) {
-        perror("Error closing filesystem");
-        exit(EXIT_FAILURE);
-    }
-
-    fs->current_dir = (Entry*) malloc (sizeof(Entry));
-    fs->current_dir->name = "root";
-    fs->current_dir->num_files = 0;
-    fs->current_dir->num_directories = 0;
-    fs->current_dir->parent = fs->current_dir;
-    fs->current_dir->directories = (Entry**) malloc(MAX_NUM_FILES * sizeof(Entry*));
-    fs->current_dir->files_handlers = (FileHandle**) malloc(MAX_NUM_FILES * sizeof(FileHandle*));
-
+    close(fd);
     return fs;
 }
 
-void endFileSystem(FATFileSystem* fs) {
+/*void endFileSystem(FATFileSystem* fs) {
     free(fs->current_dir->directories);
     free(fs->current_dir->files_handlers);
     free(fs->current_dir);
@@ -480,4 +515,4 @@ void listDir(FATFileSystem* fs) {
     for (int j = 0; j < current_dir->num_files; j++) {
         printf("%s\n", current_dir->files_handlers[j]->name);
     }
-}
+}*/
