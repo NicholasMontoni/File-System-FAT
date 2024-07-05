@@ -16,7 +16,15 @@ int main(int argc, char *argv[]) {
     createFile(fs, "file3.txt");
     createFile(fs, "file4.txt");
 
-    //eraseFile(fs,"file2.txt");
+    eraseFile(fs,"file2.txt");
+    eraseFile(fs, "file3.txt");
+    eraseFile(fs,"file1.txt");
+    eraseFile(fs,"file3.txt");
+
+    createFile(fs, "file1.txt");
+    createFile(fs, "file2.txt");
+    createFile(fs, "file3.txt");
+    createFile(fs, "file4.txt");
 
     printFAT(fs->FATfs);
 

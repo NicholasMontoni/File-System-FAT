@@ -47,7 +47,7 @@ void defragment(FileSystem* fs, int current_block, int previous_block, int pos) 
             return;
         }
 
-        for (int i = (pos/32); i < (BLOCK_SIZE/32); i++) {
+        for (int i = (pos/32); i < (BLOCK_SIZE/32)-1; i++) {
             DirEntry* current_entry = (DirEntry*)(fs->FATfs->data + (current_block * BLOCK_SIZE) + i*32);
             DirEntry* next_entry = (DirEntry*)(fs->FATfs->data + (current_block * BLOCK_SIZE) + (i+1)*32);
             memcpy(current_entry, next_entry, 32);
