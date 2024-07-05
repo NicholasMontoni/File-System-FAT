@@ -38,21 +38,12 @@ void printFAT(FATFileSystem* fs) {
 void defragment(FileSystem* fs, int current_block, int previous_block, int pos) {
 
     while (1) {
-        if  ((*(fs->FATfs->data + (current_block * BLOCK_SIZE)) == '\0') && (*(fs->FATfs->data + (current_block * BLOCK_SIZE) + 32) == '\0')) {
-            fs->FATfs->FAT->FAT[current_block] = FREE;
-            fs->FATfs->FAT->FAT[previous_block] = EOF_BLOCK;
-            free_block(fs->FATfs, current_block);
-            int* parent_last_block = (int*)(fs->FATfs->data + (fs->current_dir * BLOCK_SIZE) + LAST_BLOCK_OFFSET);
-            *parent_last_block = previous_block;
-            return;
-        }
-
         for (int i = (pos/32); i < (BLOCK_SIZE/32)-1; i++) {
             DirEntry* current_entry = (DirEntry*)(fs->FATfs->data + (current_block * BLOCK_SIZE) + i*32);
             DirEntry* next_entry = (DirEntry*)(fs->FATfs->data + (current_block * BLOCK_SIZE) + (i+1)*32);
             memcpy(current_entry, next_entry, 32);
-            memset(next_entry, '\0', 32);
         }
+        memset(fs->FATfs->data + (current_block * BLOCK_SIZE) + (BLOCK_SIZE - 32), '\0', 32);
 
         if  ((*(fs->FATfs->data + (current_block * BLOCK_SIZE)) == '\0') && (*(fs->FATfs->data + (current_block * BLOCK_SIZE) + 32) == '\0')) {
             fs->FATfs->FAT->FAT[current_block] = FREE;
@@ -231,6 +222,19 @@ void eraseFile(FileSystem* fs, char* filename) {
                 defragment(fs, block, previous_block, i);
                 int* parent_size = (int*)(fs->FATfs->data + (fs->current_dir * BLOCK_SIZE) + SIZE_OFFSET);
                 *parent_size -= 32;
+
+                int* file_size = (int*)(fs->FATfs->data + (block * BLOCK_SIZE) + i + SIZE_OFFSET);
+                
+                if (*file_size != 0) {
+                    int start = *((int*)(fs->FATfs->data + (block * BLOCK_SIZE) + i + START_BLOCK_OFFSET));
+
+                    while (start != EOF_BLOCK) {
+                        memset(fs->FATfs->data + (start * BLOCK_SIZE), '\0', BLOCK_SIZE);
+                        free_block(fs->FATfs, start);
+                        start = fs->FATfs->FAT->FAT[start];
+                    }
+                }
+
                 return;
             } 
         }

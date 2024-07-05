@@ -11,22 +11,20 @@
 int main(int argc, char *argv[]) {
     FileSystem* fs = loadFileSystem("filesystem", 4096);
 
-    createFile(fs, "file1.txt");
+    /*createFile(fs, "file1.txt");
     createFile(fs, "file2.txt");
     createFile(fs, "file3.txt");
     createFile(fs, "file4.txt");
 
-    eraseFile(fs,"file2.txt");
+    eraseFile(fs,"file4.txt");
     eraseFile(fs, "file3.txt");
     eraseFile(fs,"file1.txt");
-    eraseFile(fs,"file3.txt");
+    eraseFile(fs, "file3.txt");
 
     createFile(fs, "file1.txt");
     createFile(fs, "file2.txt");
     createFile(fs, "file3.txt");
-    createFile(fs, "file4.txt");
-
-    printFAT(fs->FATfs);
+    createFile(fs, "file4.txt");*/
 
     unloadFileSystem(fs);
     
