@@ -1,8 +1,12 @@
-#define MAX_NUM_FILES 100
-#define NUM_BLOCKS 1024
-#define BLOCK_SIZE 40
+#define BLOCK_SIZE 64
 #define FREE -1
 #define EOF_BLOCK -2
+#define TYPE_DIRECTORY 1
+#define TYPE_FILE 2
+#define START_BLOCK_OFFSET 16
+#define LAST_BLOCK_OFFSET 20
+#define TYPE_OFFSET 24
+#define SIZE_OFFSET 28
 
 typedef struct {
     int* free_list;
@@ -25,15 +29,24 @@ typedef struct {
 } FileHandle;
 
 typedef struct {
+    char name[16];
+    int start_block;
+    int last_block;
+    int type;
+    int size;
+} DirEntry;
+
+typedef struct {
     FATFileSystem* FATfs;
     int current_dir;
+    int total_size;
 } FileSystem;
 
 
 FileSystem* loadFileSystem(char* name, int size_requested);
-void endFileSystem(FATFileSystem* fs);
-FileHandle* createFile(FATFileSystem* fs, char *filename);
-void eraseFile(FATFileSystem* fs, FileHandle* fh);
+void unloadFileSystem(FileSystem* fs);
+void createFile(FileSystem* fs, char *filename);
+void eraseFile(FileSystem* fs, char* filename);
 //OPEN FILE missing
 void writeFile(FATFileSystem* fs, FileHandle *fh, const void *buf, int size);
 void appendFile(FATFileSystem* fs, FileHandle* fh, const void *buf, int size);
@@ -43,3 +56,5 @@ void createDir(FATFileSystem* fs, char *dirname);
 void eraseDir(FATFileSystem* fs, char *dirname);
 void changeDir(FATFileSystem* fs, char *dirname);
 void listDir(FATFileSystem* fs);
+
+void printFAT(FATFileSystem* fs);

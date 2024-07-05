@@ -9,13 +9,18 @@
 #include "file-system.h"
 
 int main(int argc, char *argv[]) {
-    FileSystem* fs = loadFileSystem("filesystem.txt", 4096);
+    FileSystem* fs = loadFileSystem("filesystem", 4096);
 
-    printf("%d\n", fs->FATfs->FAT->free_blocks);
-    for (int i=0; i<fs->FATfs->FAT->free_blocks; i++) {
-        printf("%d, ", fs->FATfs->FAT->free_list[i]);
-    }
-    printf("\n");
+    createFile(fs, "file1.txt");
+    createFile(fs, "file2.txt");
+    createFile(fs, "file3.txt");
+    createFile(fs, "file4.txt");
+
+    //eraseFile(fs,"file2.txt");
+
+    printFAT(fs->FATfs);
+
+    unloadFileSystem(fs);
     
 //    //Initialize the filesystem
 //    FATFileSystem* fs = startFileSystem();
