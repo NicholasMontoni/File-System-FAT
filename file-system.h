@@ -3,6 +3,7 @@
 #define EOF_BLOCK -2
 #define TYPE_DIRECTORY 1
 #define TYPE_FILE 2
+#define NAME_MAX_LEN 16
 #define START_BLOCK_OFFSET 16
 #define LAST_BLOCK_OFFSET 20
 #define TYPE_OFFSET 24
@@ -20,8 +21,9 @@ typedef struct {
 } FATFileSystem;
 
 typedef struct {
-    char* name;
+    char name[NAME_MAX_LEN];
     int parent_block;
+    int parent_offset;
     int first_block;
     int current_block;
     int last_block;
@@ -29,7 +31,7 @@ typedef struct {
 } FileHandle;
 
 typedef struct {
-    char name[16];
+    char name[NAME_MAX_LEN];
     int start_block;
     int last_block;
     int type;
@@ -47,8 +49,9 @@ FileSystem* loadFileSystem(char* name, int size_requested);
 void unloadFileSystem(FileSystem* fs);
 void createFile(FileSystem* fs, char *filename);
 void eraseFile(FileSystem* fs, char* filename);
-//OPEN FILE missing
-void writeFile(FATFileSystem* fs, FileHandle *fh, const void *buf, int size);
+FileHandle* openFile(FileSystem* fs, char* filename);
+void closeFile(FileSystem* fs, FileHandle* fh);
+void writeFile(FileSystem* fs, FileHandle *fh, const void *buf, int size);
 void appendFile(FATFileSystem* fs, FileHandle* fh, const void *buf, int size);
 void readFile(FATFileSystem* fs, FileHandle *fh, void *buf, int size);
 void seekFile(FATFileSystem* fs, FileHandle *fh, int offset, int whence);

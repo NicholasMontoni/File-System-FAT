@@ -11,6 +11,8 @@
 
 //UTILITIES
 int allocate_block(FATFileSystem* fs) {
+    if (fs->FAT->free_blocks == 0) return -1;
+
     int* pblock = (int*)fs->FAT->free_list; 
     int block = *pblock;
     fs->FAT->free_blocks--;
@@ -143,7 +145,7 @@ FileSystem* loadFileSystem(char* name, int size_requested) {
         fs->FATfs->FAT->FAT[0] = EOF_BLOCK;
 
         DirEntry* root = (DirEntry*)fs->FATfs->data;
-        strncpy(root->name, "root", 16);
+        strncpy(root->name, "root", NAME_MAX_LEN);
         root->start_block = 0;
         root->last_block = 0;
         root->type = TYPE_DIRECTORY;
@@ -173,8 +175,8 @@ void createFile(FileSystem* fs, char *filename) {
 
             if (type == TYPE_DIRECTORY) continue;
 
-            char name[16];
-            strncpy(name, fs->FATfs->data + (block * BLOCK_SIZE) + i, 16);
+            char name[NAME_MAX_LEN];
+            strncpy(name, fs->FATfs->data + (block * BLOCK_SIZE) + i, NAME_MAX_LEN);
 
             if(strcmp(filename, name) == 0) {
                 printf("File '%s' already exist in this directory!\n", filename);
@@ -189,6 +191,12 @@ void createFile(FileSystem* fs, char *filename) {
 
     if (offset == 0) {
         block = allocate_block(fs->FATfs);
+        
+        if (block == -1) {
+            printf("No more space left, file '%s' cannot be created!\n", filename);
+            return;
+        }
+
         fs->FATfs->FAT->FAT[*parent_last_block] = block;
         fs->FATfs->FAT->FAT[block] = EOF_BLOCK;
         *parent_last_block = block;
@@ -198,7 +206,7 @@ void createFile(FileSystem* fs, char *filename) {
     }
 
     DirEntry* new_file = (DirEntry*)(fs->FATfs->data + (block * BLOCK_SIZE) + offset);
-    strncpy(new_file->name, filename, 16);
+    strncpy(new_file->name, filename, NAME_MAX_LEN);
     new_file->name[15] = '\0';
     new_file->type = TYPE_FILE;
     new_file->size = 0;
@@ -215,8 +223,8 @@ void eraseFile(FileSystem* fs, char* filename) {
 
             if (type == TYPE_DIRECTORY) continue;
 
-            char name[16];
-            strncpy(name, fs->FATfs->data + (block * BLOCK_SIZE) + i, 16);
+            char name[NAME_MAX_LEN];
+            strncpy(name, fs->FATfs->data + (block * BLOCK_SIZE) + i, NAME_MAX_LEN);
 
             if(strcmp(filename, name) == 0) {
                 defragment(fs, block, previous_block, i);
@@ -225,7 +233,7 @@ void eraseFile(FileSystem* fs, char* filename) {
 
                 int* file_size = (int*)(fs->FATfs->data + (block * BLOCK_SIZE) + i + SIZE_OFFSET);
                 
-                if (*file_size != 0) {
+                if (*file_size) {
                     int start = *((int*)(fs->FATfs->data + (block * BLOCK_SIZE) + i + START_BLOCK_OFFSET));
 
                     while (start != EOF_BLOCK) {
@@ -245,61 +253,116 @@ void eraseFile(FileSystem* fs, char* filename) {
     printf("No file named %s in this directory\n", filename);
 }
 
-/*void writeFile(FATFileSystem* fs, FileHandle *fh, const void *buf, int size) {
+FileHandle* openFile(FileSystem* fs, char* filename) {
+    int block = fs->current_dir;
+    
+    while (block != EOF_BLOCK) {
+        for (int i = 0; i < BLOCK_SIZE; i += 32) {
+            int type = *((int*)(fs->FATfs->data + (block * BLOCK_SIZE) + i + TYPE_OFFSET));
+
+            if (type == TYPE_DIRECTORY) continue;
+
+            char name[NAME_MAX_LEN];
+            strncpy(name, fs->FATfs->data + (block * BLOCK_SIZE) + i, NAME_MAX_LEN);
+
+            if(strcmp(filename, name) == 0) {
+                FileHandle* fh = (FileHandle*) malloc (sizeof(FileHandle));
+                strncpy(fh->name, filename, NAME_MAX_LEN);
+                fh->parent_block = block;
+                fh->parent_offset = i;
+
+                int* file_size = (int*)(fs->FATfs->data + (block * BLOCK_SIZE) + i + SIZE_OFFSET);
+                if (*file_size) {
+                    int start = *((int*)(fs->FATfs->data + (block * BLOCK_SIZE) + i + START_BLOCK_OFFSET));
+                    fh->first_block = start;
+                    fh->current_block = start;
+                    fh->last_block = start;
+                    fh->pos = 0; 
+                }
+
+                return fh;
+            } 
+        }
+        block = fs->FATfs->FAT->FAT[block];
+    }
+    printf("No file named %s in this directory\n", filename);
+    return NULL;
+}
+
+void closeFile(FileSystem* fs, FileHandle* fh) {
+    free(fh);
+}
+
+void writeFile(FileSystem* fs, FileHandle *fh, const void *buf, int size) {
     if (fh == NULL) {
         printf("Invalid file\n");
         return;
     }
 
-    if (strcmp(fs->current_dir->name, fh->parent_name) != 0) {
-        printf("The file is not in this directory. Change to '%s' directory and try again\n", fh->parent_name);
+    //Cleaning the previous contents of the file
+    int* file_size = (int*)(fs->FATfs->data + (fh->parent_block * BLOCK_SIZE) + fh->parent_offset + SIZE_OFFSET);
+
+    if (*file_size) {
+        int i = fh->first_block;
+        while (i != EOF_BLOCK) {
+            memset(fs->FATfs->data + (i * BLOCK_SIZE), '\0', BLOCK_SIZE);
+            free_block(fs->FATfs,i);
+            int temp = fs->FATfs->FAT->FAT[i];
+            fs->FATfs->FAT->FAT[i] = FREE;
+            *file_size -= BLOCK_SIZE;
+            i = temp;
+        }
+    }
+
+    //Writing from the beginning
+    if(size == 0) return;
+ 
+    fh->pos = 0;
+    int written_bytes = 0;
+    int b = allocate_block(fs->FATfs);
+
+    if (b == -1) {
+        printf("No more space left, file '%s' cannot be written!\n", fh->name);
         return;
     }
 
-    //Cleaning the previous contents of the file
-    int i = fh->first_block;
-    while (i != EOF_BLOCK) {
-        memset(fs->data + (i * BLOCK_SIZE), '\0', BLOCK_SIZE);
-        int temp = fs->FAT[i];
-        fs->FAT[i] = (i == fh->first_block) ? EOF_BLOCK : FREE;
-        i = temp;
-    }
+    int* file_start_block = (int*)(fs->FATfs->data + (fh->parent_block * BLOCK_SIZE) + fh->parent_offset + START_BLOCK_OFFSET);
+    int* file_last_block = (int*)(fs->FATfs->data + (fh->parent_block * BLOCK_SIZE) + fh->parent_offset + LAST_BLOCK_OFFSET);
 
-    //Writing from the beginning 
-    fh->pos = 0;
-    int initial_position = fh->pos;
-    fh->last_block = fh->first_block;
-    int written_bytes = 0;
+    *file_start_block = b;
+    *file_last_block = b;
+    *file_size += BLOCK_SIZE;
+    fh->first_block = b;
+    fh->current_block = b;
+    fh->last_block = b;
+    fs->FATfs->FAT->FAT[b] = EOF_BLOCK;
 
     while (size > 0) {
         int left_bytes = (size > BLOCK_SIZE) ? BLOCK_SIZE : size;
-        memcpy (fs->data + (fh->last_block * BLOCK_SIZE), buf + written_bytes, left_bytes);
+        memcpy (fs->FATfs->data + (fh->last_block * BLOCK_SIZE), buf + written_bytes, left_bytes);
         written_bytes += left_bytes;
         size -= left_bytes;
         fh->pos += left_bytes;
 
         if (size != 0) {
-            int found = 0;
-            for (int i=0; i<NUM_BLOCKS; i++) {
-                if (fs->FAT[i] == FREE) {
-                    found = 1;
-                    fs->FAT[fh->last_block] = i;
-                    fs->FAT[i] = EOF_BLOCK;
-                    fh->current_block = i;
-                    fh->last_block = i;
-                    break;
-                }
-            }
-            
-            if (!found) {
-                printf ("Buf was too big, no more space left. Only first %d bytes of buf have been written!\n",(fh->pos-initial_position));
+            b = allocate_block(fs->FATfs);
+
+            if (b == -1) {
+                printf("Buf was too big, no more space left. Only first %d bytes of buf have been written!\n", fh->pos);
                 return;
             }
+
+            *file_size += BLOCK_SIZE;
+            fs->FATfs->FAT->FAT[fh->last_block] = b;
+            fs->FATfs->FAT->FAT[b] = EOF_BLOCK;
+            fh->last_block = b;
+            *file_last_block = b;
+            fh->current_block = b;
         }
     }
 }
 
-void appendFile(FATFileSystem* fs, FileHandle *fh, const void *buf, int size) {
+/*void appendFile(FATFileSystem* fs, FileHandle *fh, const void *buf, int size) {
 
     if (fh == NULL) {
         printf("Invalid file\n");
