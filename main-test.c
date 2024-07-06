@@ -16,33 +16,60 @@ int main(int argc, char *argv[]) {
     createFile(fs, "file2.txt");
     createFile(fs, "file3.txt");
     createFile(fs, "file4.txt");
+    createFile(fs, "file5.txt");
 
-    eraseFile(fs,"file4.txt");
-    eraseFile(fs, "file3.txt");
-    eraseFile(fs,"file1.txt");
-    eraseFile(fs, "file3.txt");
-
-    createFile(fs, "file1.txt");
-    createFile(fs, "file2.txt");
-    createFile(fs, "file3.txt");
-    createFile(fs, "file4.txt");
+    //eraseFile(fs,"file4.txt");
+    //eraseFile(fs, "file3.txt");
+    //eraseFile(fs,"file1.txt");
+    //eraseFile(fs, "file3.txt");
+//
+    //createFile(fs, "file1.txt");
+    //createFile(fs, "file2.txt");
+    //createFile(fs, "file3.txt");
+    //createFile(fs, "file4.txt");
 
 
     //TEST openFile
     FileHandle* f1 = openFile(fs, "file1.txt");
+    FileHandle* f2 = openFile(fs, "file2.txt");
     FileHandle* f3 = openFile(fs, "file3.txt");
+    FileHandle* f7 = openFile(fs, "file7.txt");
 
     //TEST writeFile
     writeFile(fs, f1, "Lorem ipsum dolor sit amet, consectetuer adipiscing elit. Aenean commodo ligula eget dolor. Aenean massa. Cum sociis natoque penatibus et magnis dis parturient montes, nascetur ridiculus mus. Donec quam felis, ultricies nec, pellentesque eu, pretium quis, sem. Nulla consequat massa quis enim. Donec pede justo, fringilla vel, aliquet nec, vulputate eget, arcu. In enim justo, rhoncus ut, imperdiet a, venenatis vitae, justo. Nullam dictum felis eu pede mollis pretium. Integer tincidunt. Cras dapibus.", 503);
-    appendFile(fs, f1, " Vivamus elementum semper nisi. Aenean vulputate eleifend tellus. Aenean leo ligula, porttitor eu, consequat vitae, eleifend ac, enim. Aliquam lorem ante, dapibus in, viverra quis, feugiat a, tellus. Phasellus viverra nulla ut metus varius laoreet. Quisque rutrum. Aenean imperdiet. Etiam ultricies nisi vel augue. Curabitur ullamcorper ultricies nisi. Nam eget dui. Etiam rhoncus. Maecenas tempus, tellus eget condimentum rhoncus, sem quam semper libero, sit amet adipiscing sem neque sed ipsum. Nam quam nunc, blandit vel, luctus pulvinar, hendrerit id, lorem. Maecenas nec odio et ante tincidunt tempus. Donec vitae sapien ut libero venenatis faucibus. Nullam quis ante. Etiam sit amet orci eget eros faucibus tincidunt. Duis leo. Sed fringilla mauris sit amet nibh. Donec sodales sagittis magna.", 800);
-
     writeFile(fs, f3, "La mia anima è pervasa da una mirabile serenità, simile a queste belle mattinate di maggio che io godo con tutto il cuore. Sono solo e mi rallegro di vivere in questo luogo che sembra esser creato per anime simili alla mia. Sono così felice, mio caro, così immerso nel sentimento della mia tranquilla esistenza che la mia arte ne soffre. Non potrei disegnare nulla ora, neppure un segno potrei tracciare; eppure mai sono stato così gran pittore come in questo momento.", 474);
+    
+    appendFile(fs, f1, " Vivamus elementum semper nisi. Aenean vulputate eleifend tellus. Aenean leo ligula, porttitor eu, consequat vitae, eleifend ac, enim. Aliquam lorem ante, dapibus in, viverra quis, feugiat a, tellus. Phasellus viverra nulla ut metus varius laoreet. Quisque rutrum. Aenean imperdiet. Etiam ultricies nisi vel augue. Curabitur ullamcorper ultricies nisi. Nam eget dui. Etiam rhoncus. Maecenas tempus, tellus eget condimentum rhoncus, sem quam semper libero, sit amet adipiscing sem neque sed ipsum. Nam quam nunc, blandit vel, luctus pulvinar, hendrerit id, lorem. Maecenas nec odio et ante tincidunt tempus. Donec vitae sapien ut libero venenatis faucibus. Nullam quis ante. Etiam sit amet orci eget eros faucibus tincidunt. Duis leo. Sed fringilla mauris sit amet nibh. Donec sodales sagittis magna.", 800);
     appendFile(fs, f3, " Quando l'amata valle intorno a me si avvolge nei suoi vapori, e l'alto sole posa sulla mia foresta impenetrabilmente oscura, e solo alcuni raggi si spingono nell'interno sacrario, io mi stendo nell'erba alta presso il ruscello che scorre, e più vicino alla terra osservo mille multiformi erbette; allora sento più vicino al mio cuore brulicare tra gli steli il piccolo mondo degli innumerevoli, infiniti vermiciattoli e moscerini, e sento la presenza dell'Onnipossente che ci ha creati a sua immagine e ci tiene in una eterna gioia.", 536); 
     
-    closeFile(fs, f3);
-    closeFile(fs, f1);
 
-  
+    //TEST readFile and seekFile 
+    seekFile(fs, f1, 0, 0);
+    seekFile(fs, f3, -535, 2);
+    seekFile(fs, f2, 10, 1);
+
+    char* buf1 = (char*) malloc (1305);
+    char* buf2 = (char*) malloc (540);
+
+    readFile(fs, f1, buf1, 1305);
+    readFile(fs, f3, buf2, 540);
+
+    while(*buf1) {
+        printf("%c", *buf1);
+        buf1++;
+    }
+    printf("\n");
+
+    while (*buf2) {
+        printf("%c", *buf2);
+        buf2++;
+    }
+    printf("\n");
+
+
+
+
+
 //    //TEST createDir
 //    createDir(fs, "dir1");
 //    createDir(fs, "dir2");
@@ -50,32 +77,6 @@ int main(int argc, char *argv[]) {
 //
 //    //listDir(fs);
 //
-//    //TEST readFile and seekFile 
-//    seekFile(fs, f1, 0, 0);
-//    seekFile(fs,f3, -536, 2);
-//    seekFile(fs, f2, 2, 1);
-//
-//    char* buf1 = (char*) malloc (1305);
-//    char* buf2 = (char*) malloc (540);
-//
-//    readFile(fs, f1, buf1, 1305);
-//    readFile(fs, f3, buf2, 540);
-//
-//    /*while(*buf1) {
-//        printf("%c", *buf1);
-//        buf1++;
-//    }
-//    printf("\n");
-//
-//    while (*buf2) {
-//        printf("%c", *buf2);
-//        buf2++;
-//    }
-//    printf("\n");*/
-//
-//    
-//    
-//     
 //    //TEST changeDir
 //    changeDir(fs, "dir2");
 //    
@@ -94,9 +95,6 @@ int main(int argc, char *argv[]) {
 //
 //    //listDir(fs);
 //
-//    
-//    
-//    
 //    //TEST eraseFile and eraseDir
 //    changeDir(fs, "..");
 //    changeDir(fs, "..");

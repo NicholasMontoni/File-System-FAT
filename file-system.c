@@ -293,7 +293,7 @@ void closeFile(FileSystem* fs, FileHandle* fh) {
     free(fh);
 }
 
-void writeFile(FileSystem* fs, FileHandle *fh, const void *buf, int size) {
+void writeFile(FileSystem* fs, FileHandle *fh, char *buf, int size) {
     if (fh == NULL) {
         printf("Invalid file\n");
         return;
@@ -362,7 +362,7 @@ void writeFile(FileSystem* fs, FileHandle *fh, const void *buf, int size) {
     }
 }
 
-void appendFile(FileSystem* fs, FileHandle *fh, const void *buf, int size) {
+void appendFile(FileSystem* fs, FileHandle *fh, char *buf, int size) {
 
     if (fh == NULL) {
         printf("Invalid file\n");
@@ -437,7 +437,7 @@ void appendFile(FileSystem* fs, FileHandle *fh, const void *buf, int size) {
     }
 }
 
-void readFile(FileSystem* fs, FileHandle *fh, void *buf, int size) {
+void readFile(FileSystem* fs, FileHandle *fh, char *buf, int size) {
 
     if (fh == NULL) {
         printf("Invalid file\n");
@@ -447,14 +447,14 @@ void readFile(FileSystem* fs, FileHandle *fh, void *buf, int size) {
     int* file_size = (int*)(fs->FATfs->data + (fh->parent_block * BLOCK_SIZE) + fh->parent_offset + SIZE_OFFSET);
 
     if (!*file_size) {
-        printf("File is empty\n");
+        printf("File %s is empty\n", fh->name);
         return;
     }
     
     int offset = fh->pos % BLOCK_SIZE;
 
     if (*(fs->FATfs->data + (fh->current_block * BLOCK_SIZE) + offset) == '\0') {
-        printf("Nothing to read\n");
+        printf("Nothing to read in %s\n", fh->name);
         return;
     }
 
@@ -486,35 +486,41 @@ void readFile(FileSystem* fs, FileHandle *fh, void *buf, int size) {
             size -= left_bytes;
             fh->pos += left_bytes;
         }
-        if (size == 0) return;
+        if (!size){ 
+            buf[fh->pos] = '\0';
+            return;
+        }
     }
 
     //Reading in last_block
-    char* c = fs->FATfs->data + (fh->last_block);
+    char* c = fs->FATfs->data + (fh->last_block * BLOCK_SIZE) + offset;
 
     for (int i = 0; *c; i++) {
         memcpy(buf + read_bytes, fs->FATfs->data + (fh->last_block * BLOCK_SIZE) + offset + i, 1);
+        read_bytes++;
         fh->pos++;
         size--;
         c++;
-        if (!size) return;
+        if (!size) {
+            buf[fh->pos] = '\0';
+            return;
+        }
     }
+    buf[fh->pos] = '\0';
 }
 
-/*void seekFile(FATFileSystem* fs, FileHandle *fh, int offset, int whence) {
+void seekFile(FileSystem* fs, FileHandle *fh, int offset, int whence) {
 
     if (fh == NULL) {
         printf("Invalid file\n");
         return;
     }
 
-    if (strcmp(fs->current_dir->name, fh->parent_name) != 0) {
-        printf("The file is not in this directory. Change to '%s' directory and try again\n", fh->parent_name);
-        return;
-    }
+    int* file_size = (int*)(fs->FATfs->data + (fh->parent_block * BLOCK_SIZE) + fh->parent_offset + SIZE_OFFSET);
 
-    if (*(fs->data + fh->first_block * BLOCK_SIZE) == '\0') {
-        return;        
+    if (!*file_size) {
+        printf("File %s is empty\n", fh->name);
+        return;
     }
 
     //whence == 0 -> initial_position
@@ -528,8 +534,8 @@ void readFile(FileSystem* fs, FileHandle *fh, void *buf, int size) {
             int block = fh->current_block;
             if (block == EOF_BLOCK) return;
             
-            if (offset > BLOCK_SIZE) fh->current_block = fs->FAT[block];
-            int val = (offset > BLOCK_SIZE) ? BLOCK_SIZE+1 : offset;
+            if (offset >= BLOCK_SIZE) fh->current_block = fs->FATfs->FAT->FAT[block];
+            int val = (offset >= BLOCK_SIZE) ? BLOCK_SIZE : offset;
             offset -= val;
             fh->pos += val;
         }
@@ -548,10 +554,10 @@ void readFile(FileSystem* fs, FileHandle *fh, void *buf, int size) {
         
         while (block != fh->last_block) {
             fh->pos += BLOCK_SIZE;
-            block = fs->FAT[block];
+            block = fs->FATfs->FAT->FAT[block];
         }
 
-        char* temp = fs->data + (fh->last_block * BLOCK_SIZE);
+        char* temp = fs->FATfs->data + (fh->last_block * BLOCK_SIZE);
         while (*temp) {
             fh->pos++;
             temp++;
@@ -563,7 +569,7 @@ void readFile(FileSystem* fs, FileHandle *fh, void *buf, int size) {
     }
 }
 
-void createDir(FATFileSystem* fs, char *dirname) {
+/*void createDir(FATFileSystem* fs, char *dirname) {
     if (fs->current_dir->num_directories == MAX_NUM_FILES) {
         printf("Current directory is full\n");
         return;
