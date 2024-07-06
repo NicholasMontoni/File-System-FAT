@@ -66,17 +66,23 @@ int main(int argc, char *argv[]) {
     }
     printf("\n");
 
+    eraseFile(fs, "file1.txt");
+    eraseFile(fs, "file3.txt");
+    printFAT(fs->FATfs);
+    
+    //TEST createDir
+    createDir(fs, "dir1");
+    createDir(fs, "dir2");
+    createDir(fs, "dir3");
+    createDir(fs, "dir1");
+
+    printFAT(fs->FATfs);
 
 
 
 
-//    //TEST createDir
-//    createDir(fs, "dir1");
-//    createDir(fs, "dir2");
-//    createDir(fs, "dir3");
-//
-//    //listDir(fs);
-//
+
+
 //    //TEST changeDir
 //    changeDir(fs, "dir2");
 //    
