@@ -362,112 +362,146 @@ void writeFile(FileSystem* fs, FileHandle *fh, const void *buf, int size) {
     }
 }
 
-/*void appendFile(FATFileSystem* fs, FileHandle *fh, const void *buf, int size) {
+void appendFile(FileSystem* fs, FileHandle *fh, const void *buf, int size) {
 
     if (fh == NULL) {
         printf("Invalid file\n");
         return;
     }
 
-    if (strcmp(fs->current_dir->name, fh->parent_name) != 0) {
-        printf("The file is not in this directory. Change to '%s' directory and try again\n", fh->parent_name);
-        return;
-    }
-
-    int initial_position = fh->pos;
-    int offset = fh->pos % BLOCK_SIZE;
+    int initial_position;
+    int offset;
 
     //Cleaning the previous contents of the file after current position
-    int i = fh->current_block;
-    while (i != EOF_BLOCK) {
-        (i == fh->current_block)? memset(fs->data + (i * BLOCK_SIZE) + offset, '\0', BLOCK_SIZE - offset) : memset(fs->data + (i * BLOCK_SIZE), '\0', BLOCK_SIZE);
-        int temp = fs->FAT[i];
-        fs->FAT[i] = (i == fh->current_block) ? EOF_BLOCK : FREE;
-        i = temp;
+    int* file_size = (int*)(fs->FATfs->data + (fh->parent_block * BLOCK_SIZE) + fh->parent_offset + SIZE_OFFSET);
+
+    if (*file_size) {
+        initial_position = fh->pos;
+        offset = fh->pos % BLOCK_SIZE;
+
+        int i = fh->current_block;
+        while (i != EOF_BLOCK) {
+            int temp = fs->FATfs->FAT->FAT[i];
+
+            if (i == fh->current_block) { 
+                memset(fs->FATfs->data + (i * BLOCK_SIZE) + offset, '\0', BLOCK_SIZE - offset);
+                fs->FATfs->FAT->FAT[i] = EOF_BLOCK;
+            }
+            else {
+                memset(fs->FATfs->data + (i * BLOCK_SIZE), '\0', BLOCK_SIZE);
+                free_block(fs->FATfs, i);
+                fs->FATfs->FAT->FAT[i] = FREE;
+                *file_size -= BLOCK_SIZE;
+            }
+            i = temp;
+        }
+    }
+    else {
+        writeFile(fs, fh, buf, size);
+        return;
     }
 
     //Writing from current position
     if (size < BLOCK_SIZE - offset) {
-        memcpy (fs->data + (fh->current_block * BLOCK_SIZE) + offset-1, buf, size);
+        memcpy (fs->FATfs->data + (fh->current_block * BLOCK_SIZE) + offset-1, buf, size);
         fh->pos += size;
         return;
     }
 
-    memcpy (fs->data + (fh->current_block * BLOCK_SIZE) + offset-1, buf, BLOCK_SIZE - offset+1);
+    memcpy (fs->FATfs->data + (fh->current_block * BLOCK_SIZE) + offset-1, buf, BLOCK_SIZE - offset+1);
     int written_bytes = (BLOCK_SIZE - offset + 1);
     fh->pos += written_bytes;
     size -= written_bytes;
+    int* file_last_block = (int*)(fs->FATfs->data + (fh->parent_block * BLOCK_SIZE) + fh->parent_offset + LAST_BLOCK_OFFSET);
 
     while (size > 0) {
-        int found = 0;
-        for (int i=0; i<NUM_BLOCKS; i++) {
-            if (fs->FAT[i] == FREE) {
-                found = 1;
-                fs->FAT[fh->last_block] = i;
-                fs->FAT[i] = EOF_BLOCK;
-                fh->current_block = i;
-                fh->last_block = i;
-                break;
-            }
-        }
+        int b = allocate_block(fs->FATfs);
         
-        if (!found) {
+        if (b == -1) {
             printf ("Buf was too big, no more space left. Only first %d bytes of buf have been written!\n",(fh->pos-initial_position));
             return;
         }
 
+        *file_size += BLOCK_SIZE;
+        fs->FATfs->FAT->FAT[fh->last_block] = b;
+        fs->FATfs->FAT->FAT[b] = EOF_BLOCK;
+        fh->last_block = b;
+        *file_last_block = b;
+        fh->current_block = b;
+
         int left_bytes = (size > BLOCK_SIZE) ? BLOCK_SIZE : size;
-        memcpy (fs->data + (fh->last_block * BLOCK_SIZE), buf + written_bytes, left_bytes);
+        memcpy (fs->FATfs->data + (fh->last_block * BLOCK_SIZE), buf + written_bytes, left_bytes);
         written_bytes += left_bytes;
         size -= left_bytes;
         fh->pos += left_bytes;
     }
 }
 
-void readFile(FATFileSystem* fs, FileHandle *fh, void *buf, int size) {
+void readFile(FileSystem* fs, FileHandle *fh, void *buf, int size) {
 
     if (fh == NULL) {
         printf("Invalid file\n");
         return;
     }
 
-    if (strcmp(fs->current_dir->name, fh->parent_name) != 0) {
-        printf("The file is not in this directory. Change to '%s' directory and try again\n", fh->parent_name);
+    int* file_size = (int*)(fs->FATfs->data + (fh->parent_block * BLOCK_SIZE) + fh->parent_offset + SIZE_OFFSET);
+
+    if (!*file_size) {
+        printf("File is empty\n");
         return;
     }
     
     int offset = fh->pos % BLOCK_SIZE;
-    if (*(fs->data + (fh->current_block * BLOCK_SIZE) + offset) == '\0') {
+
+    if (*(fs->FATfs->data + (fh->current_block * BLOCK_SIZE) + offset) == '\0') {
         printf("Nothing to read\n");
         return;
     }
 
-    if (size < BLOCK_SIZE - offset) {
-        memcpy(buf, fs->data + (fh->current_block * BLOCK_SIZE) + offset, size);
-        fh->pos += size;
-        return;
+    int read_bytes = 0;
+
+    if (fh->current_block != fh->last_block) {
+
+        if (size < BLOCK_SIZE - offset) {
+            memcpy(buf, fs->FATfs->data + (fh->current_block * BLOCK_SIZE) + offset, size);
+            fh->pos += size;
+            return;
+        }
+
+        memcpy(buf, fs->FATfs->data + (fh->current_block * BLOCK_SIZE) + offset, BLOCK_SIZE - offset);
+        read_bytes = BLOCK_SIZE - offset;
+        offset = 0; 
+        fh->pos += read_bytes;
+        size -= read_bytes;
+
+        while (size > 0) {      
+            int block = fh->current_block;
+            fh->current_block = fs->FATfs->FAT->FAT[block];
+
+            if (fh->current_block == fh->last_block) break;
+
+            int left_bytes = (size > BLOCK_SIZE) ? BLOCK_SIZE : size;
+            memcpy (buf + read_bytes, fs->FATfs->data + (fh->current_block * BLOCK_SIZE), left_bytes);
+            read_bytes += left_bytes;
+            size -= left_bytes;
+            fh->pos += left_bytes;
+        }
+        if (size == 0) return;
     }
 
-    memcpy(buf, fs->data + (fh->current_block * BLOCK_SIZE) + offset, BLOCK_SIZE - offset);
-    int read_bytes = BLOCK_SIZE - offset; 
-    fh->pos += read_bytes;
-    size -= read_bytes;
+    //Reading in last_block
+    char* c = fs->FATfs->data + (fh->last_block);
 
-    while (size > 0) {      
-        int block = fh->current_block;
-        fh->current_block = fs->FAT[block];
-
-        int left_bytes = (size > BLOCK_SIZE) ? BLOCK_SIZE : size;
-        memcpy (buf + read_bytes, fs->data + (fh->current_block * BLOCK_SIZE), left_bytes);
-        read_bytes += left_bytes;
-        size -= left_bytes;
-        fh->pos += left_bytes;
-
-        if (fh->current_block == fh->last_block) return;
+    for (int i = 0; *c; i++) {
+        memcpy(buf + read_bytes, fs->FATfs->data + (fh->last_block * BLOCK_SIZE) + offset + i, 1);
+        fh->pos++;
+        size--;
+        c++;
+        if (!size) return;
     }
 }
 
-void seekFile(FATFileSystem* fs, FileHandle *fh, int offset, int whence) {
+/*void seekFile(FATFileSystem* fs, FileHandle *fh, int offset, int whence) {
 
     if (fh == NULL) {
         printf("Invalid file\n");
