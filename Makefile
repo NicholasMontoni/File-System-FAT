@@ -1,7 +1,7 @@
 DEPS = file-system.h
 	
 %.o: %.c $(DEPS)
-	gcc -c -std=c11 -Wall -ggdb3 -o $@ $<
+	gcc -c -o $@ $<
 
 file-system: main-test.o file-system.o
 	gcc -o file-system main-test.o file-system.o

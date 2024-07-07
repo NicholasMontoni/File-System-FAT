@@ -9,24 +9,23 @@
 #include "file-system.h"
 
 int main(int argc, char *argv[]) {
-    FileSystem* fs = loadFileSystem("filesystem", 4096);
+    FileSystem* fs = loadFileSystem("FILESYSTEM", FILESYSTEM_SIZE);
 
     //TEST createFILE and eraseFile 
     createFile(fs, "file1.txt");
     createFile(fs, "file2.txt");
     createFile(fs, "file3.txt");
     createFile(fs, "file4.txt");
-    createFile(fs, "file5.txt");
 
-    //eraseFile(fs,"file4.txt");
-    //eraseFile(fs, "file3.txt");
-    //eraseFile(fs,"file1.txt");
-    //eraseFile(fs, "file3.txt");
-//
-    //createFile(fs, "file1.txt");
-    //createFile(fs, "file2.txt");
-    //createFile(fs, "file3.txt");
-    //createFile(fs, "file4.txt");
+    eraseFile(fs,"file4.txt");
+    eraseFile(fs, "file3.txt");
+    eraseFile(fs,"file1.txt");
+    eraseFile(fs, "file3.txt");
+
+    createFile(fs, "file1.txt");
+    createFile(fs, "file2.txt");
+    createFile(fs, "file3.txt");
+    createFile(fs, "file4.txt");
 
 
     //TEST openFile
@@ -54,102 +53,113 @@ int main(int argc, char *argv[]) {
     readFile(fs, f1, buf1, 1305);
     readFile(fs, f3, buf2, 540);
 
-    while(*buf1) {
-        printf("%c", *buf1);
-        buf1++;
-    }
-    printf("\n");
+    //while(*buf1) {
+    //    printf("%c", *buf1);
+    //    buf1++;
+    //}
+    //printf("\n");
+//
+    //while (*buf2) {
+    //    printf("%c", *buf2);
+    //    buf2++;
+    //}
+    //printf("\n");
+//
 
-    while (*buf2) {
-        printf("%c", *buf2);
-        buf2++;
-    }
-    printf("\n");
+    closeFile(fs, f1);
+    closeFile(fs, f2);
+    closeFile(fs, f3);
 
-    eraseFile(fs, "file1.txt");
-    eraseFile(fs, "file3.txt");
-    printFAT(fs->FATfs);
-    
+    //eraseFile(fs, "file1.txt");
+    //eraseFile(fs, "file3.txt");
+
     //TEST createDir
     createDir(fs, "dir1");
     createDir(fs, "dir2");
     createDir(fs, "dir3");
     createDir(fs, "dir1");
 
+    //TEST changeDir
+    changeDir(fs, "dir2");
+    
+    createDir(fs,"dir4");
+    createFile(fs, "file5.txt");
+    createDir(fs,"dir5");
+    createFile(fs, "file6.txt");
+    createDir(fs,"dir6");
+
+    changeDir(fs, "dir6");
+
+    createFile(fs, "file7.txt");
+    createDir(fs,"dir7");
+    createFile(fs, "file8.txt");
+    createDir(fs,"dir8");
+
+    createDir(fs,"dir9");
+    createDir(fs,"dir10");
+    createDir(fs,"dir11");
+    createDir(fs,"dir12");
+    createDir(fs,"dir13");
+    createDir(fs,"dir14");
+    createDir(fs,"dir15");
+    changeDir(fs, "..");
+    changeDir(fs, "..");
+
+
+    //TEST eraseDir
+    //eraseDir(fs, "dir2");
+
+    createDir(fs, "dir16");
     printFAT(fs->FATfs);
 
 
+    //TEST listDir
+    listDir(fs);
+    changeDir(fs, "dir2");
+    listDir(fs);
+    changeDir(fs, "dir6");
+    listDir(fs);
 
 
 
+    //More
+    f7 = openFile(fs, "file7.txt");
+    writeFile(fs, f7, "Gregorio Samsa, svegliandosi una mattina da sogni agitati, si trovò trasformato, nel suo letto, in un enorme insetto immondo. Riposava sulla schiena, dura come una corazza, e sollevando un poco il capo vedeva il suo ventre arcuato, bruno e diviso in tanti segmenti ricurvi, in cima a cui la coperta da letto, vicina a scivolar giù tutta, si manteneva a fatica. Le gambe, numerose e sottili da far pietà, rispetto alla sua corporatura normale, tremolavano senza tregua in un confuso luccichio dinanzi ai suoi occhi. Cosa m’è avvenuto?", 540);
+    
+    changeDir(fs, "..");
+    
+    FileHandle* f5 = openFile(fs, "file5.txt");
+    writeFile(fs, f5, "Li Europan lingues es membres del sam familie. Lor separat existentie es un myth. Por scientie, musica, sport etc, litot Europa usa li sam vocabular. Li lingues differe solmen in li grammatica, li pronunciation e li plu commun vocabules. Omnicos directe al desirabilite de un nov lingua franca: On refusa continuar payar custosi traductores. At solmen va esser necessi far uniform grammatica, pronunciation e plu sommun paroles. Ma quande lingues coalesce, li grammatica del resultant lingue es plu simplic e regulari quam ti del coalescent lingues. Li nov lingua franca va esser plu simplic e regulari quam li existent Europan lingues. It va esser tam simplic quam Occidental in fact, it va esser Occidental. A un Angleso it va semblar un simplificat Angles, quam un skeptic Cambridge amico dit me que Occidental es.Li Europan lingues es membres del sam familie. Lor separat existentie es un myth. Por scientie, musica, sport etc, litot Europa usa li sam vocabular. Li lingues differe solmen in li grammatica, li pronunciation e li plu commun vocabules. Omnicos directe al desirabilite de un nov lingua franca: On refusa continuar payar custosi traductores.", 1159);
+    
+    changeDir(fs, "dir6");
+    appendFile(fs, f7, " pensò. Non era un sogno. La sua camera, una stanzetta di giuste proporzioni, soltanto un po’ piccola, se ne stava tranquilla fra le quattro ben note pareti. Sulla tavola, un campionario disfatto di tessuti - Samsa era commesso viaggiatore e sopra, appeso alla parete, un ritratto, ritagliato da lui - non era molto - da una rivista illustrata e messo dentro una bella cornice dorata: raffigurava una donna seduta, ma ben dritta sul busto, con un berretto e un boa di pelliccia; essa levava incontro a chi guardava un pesante manicotto, in cui scompariva tutto l’avambraccio.", 581);
 
-//    //TEST changeDir
-//    changeDir(fs, "dir2");
-//    
-//    createDir(fs,"dir4");
-//    FileHandle* f5 = createFile(fs, "file5.txt");
-//    createDir(fs,"dir5");
-//    FileHandle* f6 = createFile(fs, "file6.txt");
-//    createDir(fs,"dir6");
-//
-//    changeDir(fs, "dir6");
-//
-//    FileHandle* f7 = createFile(fs, "file7.txt");
-//    createDir(fs,"dir7");
-//    FileHandle* f8 = createFile(fs, "file8.txt");
-//    createDir(fs,"dir8");
-//
-//    //listDir(fs);
-//
-//    //TEST eraseFile and eraseDir
-//    changeDir(fs, "..");
-//    changeDir(fs, "..");
-//    eraseFile(fs, f1);
-//
-//
-//    //listDir(fs);
-//
-//    changeDir(fs, "dir2");
-//    changeDir(fs, "dir6");
-//    writeFile(fs, f7, "Gregorio Samsa, svegliandosi una mattina da sogni agitati, si trovò trasformato, nel suo letto, in un enorme insetto immondo. Riposava sulla schiena, dura come una corazza, e sollevando un poco il capo vedeva il suo ventre arcuato, bruno e diviso in tanti segmenti ricurvi, in cima a cui la coperta da letto, vicina a scivolar giù tutta, si manteneva a fatica. Le gambe, numerose e sottili da far pietà, rispetto alla sua corporatura normale, tremolavano senza tregua in un confuso luccichio dinanzi ai suoi occhi. Cosa m’è avvenuto?", 540);
-//    changeDir(fs, "..");
-//    writeFile(fs, f5, "Li Europan lingues es membres del sam familie. Lor separat existentie es un myth. Por scientie, musica, sport etc, litot Europa usa li sam vocabular. Li lingues differe solmen in li grammatica, li pronunciation e li plu commun vocabules. Omnicos directe al desirabilite de un nov lingua franca: On refusa continuar payar custosi traductores. At solmen va esser necessi far uniform grammatica, pronunciation e plu sommun paroles. Ma quande lingues coalesce, li grammatica del resultant lingue es plu simplic e regulari quam ti del coalescent lingues. Li nov lingua franca va esser plu simplic e regulari quam li existent Europan lingues. It va esser tam simplic quam Occidental in fact, it va esser Occidental. A un Angleso it va semblar un simplificat Angles, quam un skeptic Cambridge amico dit me que Occidental es.Li Europan lingues es membres del sam familie. Lor separat existentie es un myth. Por scientie, musica, sport etc, litot Europa usa li sam vocabular. Li lingues differe solmen in li grammatica, li pronunciation e li plu commun vocabules. Omnicos directe al desirabilite de un nov lingua franca: On refusa continuar payar custosi traductores.", 1159);
-//    changeDir(fs, "dir6");
-//    writeFile(fs, f7, " pensò. Non era un sogno. La sua camera, una stanzetta di giuste proporzioni, soltanto un po’ piccola, se ne stava tranquilla fra le quattro ben note pareti. Sulla tavola, un campionario disfatto di tessuti - Samsa era commesso viaggiatore e sopra, appeso alla parete, un ritratto, ritagliato da lui - non era molto - da una rivista illustrata e messo dentro una bella cornice dorata: raffigurava una donna seduta, ma ben dritta sul busto, con un berretto e un boa di pelliccia; essa levava incontro a chi guardava un pesante manicotto, in cui scompariva tutto l’avambraccio.", 581);
-//
-//    /*printf("[");
-//    for (int i=0; i<NUM_BLOCKS; i++) {
-//        printf("%d, ", fs->FAT[i]);
-//    }
-//    printf("]\n");
-//    
-//    /*for (int i=0; i<NUM_BLOCKS*5; i++) {
-//        printf("%c, ", fs->data[i]);
-//    }
-//    printf("\n");  
-//    printf("\n");  
-//
-//    changeDir(fs, "..");
-//    eraseDir(fs, "dir6");
-//
-//    for (int i=0; i<NUM_BLOCKS*5; i++) {
-//        printf("%c, ", fs->data[i]);
-//    }
-//    printf("\n");*/  
-//
-//
-//    //Cleaning all
-//    changeDir(fs, "..");
-//    changeDir(fs, "..");
-//    eraseDir(fs, "dir1");
-//    eraseDir(fs, "dir2");
-//    eraseDir(fs, "dir3");
-//    eraseFile(fs, f2);
-//    eraseFile(fs, f3);
-//    eraseFile(fs, f4);
-// 
-//    free(buf1); free(buf2);
-//    endFileSystem(fs);
+    seekFile(fs, f7, 0, 0);
+    seekFile(fs, f5, -1158, 2);
 
+    char* buf5 = (char*) malloc (1160);
+    char* buf7 = (char*) malloc (1125);
+
+    readFile(fs, f5, buf5, 1160);
+    readFile(fs, f7, buf7, 1125);
+
+    //while(*buf5) {
+    //    printf("%c", *buf5);
+    //    buf5++;
+    //}
+    //printf("\n");
+//
+    //while (*buf7) {
+    //    printf("%c", *buf7);
+    //    buf7++;
+    //}
+    //printf("\n");
+
+    closeFile(fs, f5);
+    closeFile(fs, f7);
+
+    //Cleaning all
+    free(buf1); free(buf2); free(buf5); free(buf7);
+    
     unloadFileSystem(fs);
 }

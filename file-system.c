@@ -29,12 +29,13 @@ void free_block(FATFileSystem* fs, int block) {
 }
 
 void printFAT(FATFileSystem* fs) {
+    int numblock = FILESYSTEM_SIZE/BLOCK_SIZE;
+    
     printf("[");
-
-    for (int i=0; i<63; i++) {
+    for (int i = 0; i < numblock; i++) {
         printf("%d, ", fs->FAT->FAT[i]);
     }
-    printf("%d]\n", fs->FAT->FAT[63]);
+    printf("%d]\n", fs->FAT->FAT[numblock-1]);
 }
 
 void defragment(FileSystem* fs, int current_block, int previous_block, int pos) {
@@ -146,6 +147,7 @@ FileSystem* loadFileSystem(char* name, int size_requested) {
 
         DirEntry* root = (DirEntry*)fs->FATfs->data;
         strncpy(root->name, "root", NAME_MAX_LEN);
+        root->parent_start = 0;
         root->start_block = 0;
         root->last_block = 0;
         root->type = TYPE_DIRECTORY;
@@ -171,8 +173,9 @@ void createFile(FileSystem* fs, char *filename) {
 
     while (block != EOF_BLOCK) {
         for (int i = 0; i < BLOCK_SIZE; i += 32) {
-            int type = *((int*)fs->FATfs->data + (block * BLOCK_SIZE) + i + TYPE_OFFSET);
+            int type = *((int*)(fs->FATfs->data + (block * BLOCK_SIZE) + i + TYPE_OFFSET));
 
+            if (!type) break;
             if (type == TYPE_DIRECTORY) continue;
 
             char name[NAME_MAX_LEN];
@@ -207,10 +210,43 @@ void createFile(FileSystem* fs, char *filename) {
 
     DirEntry* new_file = (DirEntry*)(fs->FATfs->data + (block * BLOCK_SIZE) + offset);
     strncpy(new_file->name, filename, NAME_MAX_LEN);
-    new_file->name[15] = '\0';
+    new_file->name[NAME_MAX_LEN-1] = '\0';
+    new_file->parent_start = fs->current_dir;
     new_file->type = TYPE_FILE;
     new_file->size = 0;
     *parent_size += 32;
+
+    //Size increase propagation
+    char current_dirname[NAME_MAX_LEN];
+    strncpy(current_dirname, fs->FATfs->data + (fs->current_dir * BLOCK_SIZE), NAME_MAX_LEN);
+
+    if (strncmp(current_dirname, "root", NAME_MAX_LEN) == 0) return;
+
+    int pblock = *((int*)(fs->FATfs->data + (fs->current_dir * BLOCK_SIZE) + PARENT_START_OFFSET));
+
+    int ok = 0;
+    while (pblock != EOF_BLOCK) {
+        for (int i = 0; i < BLOCK_SIZE; i += 32) {
+            int type = *((int*)(fs->FATfs->data + (pblock * BLOCK_SIZE) + i + TYPE_OFFSET));
+
+            if (!type) break;
+            if (type == TYPE_FILE) continue;
+
+            char name[NAME_MAX_LEN];
+            strncpy(name, fs->FATfs->data + (pblock * BLOCK_SIZE) + i, NAME_MAX_LEN);
+
+            if(strcmp(current_dirname, name) == 0) {
+                int* size = (int*)(fs->FATfs->data + (pblock * BLOCK_SIZE) + i + SIZE_OFFSET);
+                *size += 32;
+                ok = 1;
+                break;
+            } 
+        }
+        if (ok) break;
+
+        pblock = fs->FATfs->FAT->FAT[pblock];            
+    }
+
 }
 
 void eraseFile(FileSystem* fs, char* filename) {
@@ -221,6 +257,7 @@ void eraseFile(FileSystem* fs, char* filename) {
         for (int i = 0; i < BLOCK_SIZE; i += 32) {
             int type = *((int*)(fs->FATfs->data + (block * BLOCK_SIZE) + i + TYPE_OFFSET));
 
+            if (!type) break;
             if (type == TYPE_DIRECTORY) continue;
 
             char name[NAME_MAX_LEN];
@@ -245,7 +282,32 @@ void eraseFile(FileSystem* fs, char* filename) {
                 int* parent_size = (int*)(fs->FATfs->data + (fs->current_dir * BLOCK_SIZE) + SIZE_OFFSET);
                 *parent_size -= 32;
 
-                return;
+                //Size decrease propagation 
+                char current_dirname[NAME_MAX_LEN];
+                strncpy(current_dirname, fs->FATfs->data + (fs->current_dir * BLOCK_SIZE), NAME_MAX_LEN);
+
+                if (strncmp(current_dirname, "root", NAME_MAX_LEN) == 0) return;
+
+                int pblock = *((int*)(fs->FATfs->data + (fs->current_dir * BLOCK_SIZE) + PARENT_START_OFFSET));
+
+                while (pblock != EOF_BLOCK) {
+                    for (int i = 0; i < BLOCK_SIZE; i += 32) {
+                        int type = *((int*)(fs->FATfs->data + (pblock * BLOCK_SIZE) + i + TYPE_OFFSET));
+
+                        if (!type) break;
+                        if (type == TYPE_FILE) continue;
+
+                        char name[NAME_MAX_LEN];
+                        strncpy(name, fs->FATfs->data + (pblock * BLOCK_SIZE) + i, NAME_MAX_LEN);
+
+                        if(strcmp(current_dirname, name) == 0) {
+                            int* size = (int*)(fs->FATfs->data + (pblock * BLOCK_SIZE) + i + SIZE_OFFSET);
+                            *size -= 32;
+                            return;
+                        } 
+                    }
+                    pblock = fs->FATfs->FAT->FAT[pblock];            
+                }
             } 
         }
         previous_block = block;
@@ -262,6 +324,7 @@ FileHandle* openFile(FileSystem* fs, char* filename) {
         for (int i = 0; i < BLOCK_SIZE; i += 32) {
             int type = *((int*)(fs->FATfs->data + (block * BLOCK_SIZE) + i + TYPE_OFFSET));
 
+            if (!type) break;            
             if (type == TYPE_DIRECTORY) continue;
 
             char name[NAME_MAX_LEN];
@@ -504,11 +567,11 @@ void readFile(FileSystem* fs, FileHandle *fh, char *buf, int size) {
         size--;
         c++;
         if (!size) {
-            buf[fh->pos] = '\0';
+            memset(buf + read_bytes, '\0', 1);
             return;
         }
     }
-    buf[fh->pos] = '\0';
+    memset(buf + read_bytes, '\0', 1);
 }
 
 void seekFile(FileSystem* fs, FileHandle *fh, int offset, int whence) {
@@ -578,15 +641,16 @@ void createDir(FileSystem* fs, char *dirname) {
 
     while (block != EOF_BLOCK) {
         for (int i = 0; i < BLOCK_SIZE; i += 32) {
-            int type = *((int*)fs->FATfs->data + (block * BLOCK_SIZE) + i + TYPE_OFFSET);
+            int type = *((int*)(fs->FATfs->data + (block * BLOCK_SIZE) + i + TYPE_OFFSET));
 
+            if (!type) break;   
             if (type == TYPE_FILE) continue;
 
             char name[NAME_MAX_LEN];
             strncpy(name, fs->FATfs->data + (block * BLOCK_SIZE) + i, NAME_MAX_LEN);
 
             if(strcmp(dirname, name) == 0) {
-                printf("File '%s' already exist in this directory!\n", dirname);
+                printf("Directory '%s' already exist in this directory!\n", dirname);
                 return;
             } 
         }
@@ -605,17 +669,16 @@ void createDir(FileSystem* fs, char *dirname) {
             return;
         }
 
-        fs->FATfs->FAT->FAT[*parent_last_block] = block;
-        fs->FATfs->FAT->FAT[block] = EOF_BLOCK;
-        *parent_last_block = block;
-
-
         block_for_newdir = allocate_block(fs->FATfs);
         if (block_for_newdir == -1) {
             free_block(fs->FATfs, block);
             printf("No more space left, file '%s' cannot be created!\n", dirname);
             return;
         }
+
+        fs->FATfs->FAT->FAT[*parent_last_block] = block;
+        fs->FATfs->FAT->FAT[block] = EOF_BLOCK;
+        *parent_last_block = block;
 
         fs->FATfs->FAT->FAT[block_for_newdir] = EOF_BLOCK;
     }
@@ -633,7 +696,8 @@ void createDir(FileSystem* fs, char *dirname) {
 
     DirEntry* new_dir = (DirEntry*)(fs->FATfs->data + (block * BLOCK_SIZE) + offset);
     strncpy(new_dir->name, dirname, NAME_MAX_LEN);
-    new_dir->name[15] = '\0';
+    new_dir->name[NAME_MAX_LEN-1] = '\0';
+    new_dir->parent_start = fs->current_dir;
     new_dir->type = TYPE_DIRECTORY;
     new_dir->start_block = block_for_newdir;
     new_dir->last_block = block_for_newdir;
@@ -643,53 +707,122 @@ void createDir(FileSystem* fs, char *dirname) {
     //Creating dirEntry for newdir
     DirEntry* dir = (DirEntry*)(fs->FATfs->data + (block_for_newdir * BLOCK_SIZE));
     memcpy(dir, new_dir, 32);
-}
 
-/*void eraseDir(FileSystem* fs, char *dirname) {
-    Entry* current_dir = fs->current_dir;
+    //Size increase propagation
+    char current_dirname[NAME_MAX_LEN];
+    strncpy(current_dirname, fs->FATfs->data + (fs->current_dir * BLOCK_SIZE), NAME_MAX_LEN);
+
+    if (strncmp(current_dirname, "root", NAME_MAX_LEN) == 0) return;
+
+    int pblock = *((int*)(fs->FATfs->data + (fs->current_dir * BLOCK_SIZE) + PARENT_START_OFFSET));
 
     int ok = 0;
-    for (int i=0; i<current_dir->num_directories; i++) {
-        if (strcmp(current_dir->directories[i]->name, dirname)==0) {
-            Entry* dir = current_dir->directories[i];
-            fs->current_dir = dir;
-        
-            //Deleting files inside the directory
-            while (fs->current_dir->num_files > 0) {
-                eraseFile(fs, fs->current_dir->files_handlers[0]);
-            }
-            
-            //Deleting directories inside the directory
-            while (fs->current_dir->num_directories > 0) {
-                eraseDir(fs, fs->current_dir->directories[0]->name);
-            }
+    while (pblock != EOF_BLOCK) {
+        for (int i = 0; i < BLOCK_SIZE; i += 32) {
+            int type = *((int*)(fs->FATfs->data + (pblock * BLOCK_SIZE) + i + TYPE_OFFSET));
 
-            //Freeing the directory
-            free(dir->directories);
-            free(dir->files_handlers);
-            free(dir);
+            if (!type) break;   
+            if (type == TYPE_FILE) continue;
 
-            fs->current_dir = current_dir;
+            char name[NAME_MAX_LEN];
+            strncpy(name, fs->FATfs->data + (pblock * BLOCK_SIZE) + i, NAME_MAX_LEN);
 
-            for (int k = i; k < fs->current_dir->num_directories - 1; k++) {
-                fs->current_dir->directories[k] = fs->current_dir->directories[k + 1];
-            }
-            fs->current_dir->directories[fs->current_dir->num_directories-1] = NULL;
-            fs->current_dir->num_directories--;
-            
-            ok = 1;
-            break;
+            if(strcmp(current_dirname, name) == 0) {
+                int* size = (int*)(fs->FATfs->data + (pblock * BLOCK_SIZE) + i + SIZE_OFFSET);
+                *size += 32;
+                ok = 1;
+                break;
+            } 
         }
-    }
+        if(ok) break;
 
-    if (!ok) {
-        printf("No directory called '%s' in current directory!\n", dirname);
-        return;
+        pblock = fs->FATfs->FAT->FAT[pblock];            
     }
 }
 
-void changeDir(FATFileSystem* fs, char *dirname) {
-    Entry* current_dir = fs->current_dir;
+void eraseDir(FileSystem* fs, char *dirname) {
+    int block = fs->current_dir;
+    int previous_block = block;
+
+    while (block != EOF_BLOCK) {
+        for (int i = 0; i < BLOCK_SIZE; i += 32) {
+            if (block == fs->current_dir && i == 0) continue;
+
+            int type = *((int*)(fs->FATfs->data + (block * BLOCK_SIZE) + i + TYPE_OFFSET));
+
+            if (!type) break;   
+            if (type == TYPE_FILE) continue;
+
+            char name[NAME_MAX_LEN];
+            strncpy(name, fs->FATfs->data + (block * BLOCK_SIZE) + i, NAME_MAX_LEN);
+
+            if(strcmp(dirname, name) == 0) {
+                int dir_size = *((int*)(fs->FATfs->data + (block * BLOCK_SIZE) + i + SIZE_OFFSET));
+                int start = *((int*)(fs->FATfs->data + (block * BLOCK_SIZE) + i + START_BLOCK_OFFSET));
+                int temp = fs->current_dir;
+                
+                fs->current_dir = start;
+
+                while (dir_size > 32) {
+                    type = *((int*)(fs->FATfs->data + (start * BLOCK_SIZE) + 32 + TYPE_OFFSET));
+                    char name[NAME_MAX_LEN];
+                    strncpy(name, fs->FATfs->data + (start * BLOCK_SIZE) + 32, NAME_MAX_LEN);
+
+                    if (type == TYPE_FILE) {
+                        eraseFile(fs, name);
+                    }
+                    else {
+                        eraseDir(fs, name);
+                    }
+                    
+                    dir_size -= 32;
+                }
+
+                memset(fs->FATfs->data + (start * BLOCK_SIZE), '\0', 32);
+                free_block(fs->FATfs, start);
+                fs->FATfs->FAT->FAT[start] = FREE;
+
+                fs->current_dir = temp;
+                defragment(fs, block, previous_block, i);
+                int* parent_size = (int*)(fs->FATfs->data + (fs->current_dir * BLOCK_SIZE) + SIZE_OFFSET);
+                *parent_size -= 32;
+
+                //Size decrease propagation 
+                char current_dirname[NAME_MAX_LEN];
+                strncpy(current_dirname, fs->FATfs->data + (fs->current_dir * BLOCK_SIZE), NAME_MAX_LEN);
+            
+                if (strncmp(current_dirname, "root", NAME_MAX_LEN) == 0) return;
+
+                int pblock = *((int*)(fs->FATfs->data + (fs->current_dir * BLOCK_SIZE) + PARENT_START_OFFSET));
+
+                while (pblock != EOF_BLOCK) {
+                    for (int i = 0; i < BLOCK_SIZE; i += 32) {
+                        int type = *((int*)(fs->FATfs->data + (pblock * BLOCK_SIZE) + i + TYPE_OFFSET));
+
+                        if (!type) break;   
+                        if (type == TYPE_FILE) continue;
+
+                        char name[NAME_MAX_LEN];
+                        strncpy(name, fs->FATfs->data + (pblock * BLOCK_SIZE) + i, NAME_MAX_LEN);
+
+                        if(strcmp(current_dirname, name) == 0) {
+                            int* size = (int*)(fs->FATfs->data + (pblock * BLOCK_SIZE) + i + SIZE_OFFSET);
+                            *size -= 32;
+                            return;
+                        } 
+                    }
+                    pblock = fs->FATfs->FAT->FAT[pblock];            
+                }    
+            } 
+        }
+        previous_block = block;
+        block = fs->FATfs->FAT->FAT[previous_block];
+    }
+
+    printf("No directory named %s in this directory\n", dirname);
+}
+
+void changeDir(FileSystem* fs, char *dirname) {
 
     // dirname == "." -> remain in current directory
     if (strcmp(dirname, ".") == 0) {
@@ -698,39 +831,71 @@ void changeDir(FATFileSystem* fs, char *dirname) {
 
     // dirname == ".." -> move up to parent directory
     if (strcmp(dirname, "..") == 0) {
-        fs->current_dir = current_dir->parent;
+        int parent = *((int*)(fs->FATfs->data + (fs->current_dir * BLOCK_SIZE) + PARENT_START_OFFSET));
+        fs->current_dir = parent;
         return;
-    }
-    
-    int ok = 0;
-    for (int i=0; i<current_dir->num_directories; i++) {
-        if (strcmp(current_dir->directories[i]->name, dirname)==0) {
-            fs->current_dir = current_dir->directories[i];
-            ok = 1;
-            break;
-        }
     }
 
-    if (!ok) {
-        printf("No directory called '%s' in current directory!\n", dirname);
-        return;
+    int block = fs->current_dir;
+    
+    while (block != EOF_BLOCK) {
+        for (int i = 0; i < BLOCK_SIZE; i += 32) {
+            int type = *((int*)(fs->FATfs->data + (block * BLOCK_SIZE) + i + TYPE_OFFSET));
+
+            if (!type) break;   
+            if (type == TYPE_FILE) continue;
+
+            char name[NAME_MAX_LEN];
+            strncpy(name, fs->FATfs->data + (block * BLOCK_SIZE) + i, NAME_MAX_LEN);
+
+            if(strcmp(dirname, name) == 0) {
+                int start = *((int*)(fs->FATfs->data + (block * BLOCK_SIZE) + i + START_BLOCK_OFFSET));
+                fs->current_dir = start;
+                return;
+            } 
+        }
+        block = fs->FATfs->FAT->FAT[block];
     }
+
+    printf("No directory named %s in this directory\n", dirname);
 }
 
-void listDir(FATFileSystem* fs) {
-    Entry* current_dir = fs->current_dir;
+void listDir(FileSystem* fs) {
+    int block = fs->current_dir;
+    int dir_size = *((int*)(fs->FATfs->data + (fs->current_dir * BLOCK_SIZE) + SIZE_OFFSET));
+    dir_size /= 32;
+    char directories[dir_size][NAME_MAX_LEN];
+    char files[dir_size][NAME_MAX_LEN];
 
-    //Listing directories inside current directory
-    printf("Directories inside '%s' directory:\n", current_dir->name);
+    int dir_index = 0;
+    int file_index = 0;
+    while (block != EOF_BLOCK) {
+        for (int i = 0; i < BLOCK_SIZE; i += 32) {
+            int type = *((int*)(fs->FATfs->data + (block * BLOCK_SIZE) + i + TYPE_OFFSET));
 
-    for (int i = 0; i < current_dir->num_directories; i++) {
-        printf("%s\n", current_dir->directories[i]->name);
+            if (!type) break;   
+
+            if (type == TYPE_FILE) {
+                strncpy(files[file_index], fs->FATfs->data + (block * BLOCK_SIZE) + i, NAME_MAX_LEN);
+                file_index++;
+            }
+            else {
+                strncpy(directories[dir_index], fs->FATfs->data + (block * BLOCK_SIZE) + i, NAME_MAX_LEN);
+                dir_index++;                
+            }
+        }
+        block = fs->FATfs->FAT->FAT[block];
     }
 
-    //Listing files inside current directory
-    printf("Files inside '%s' directory:\n", current_dir->name);
-
-    for (int j = 0; j < current_dir->num_files; j++) {
-        printf("%s\n", current_dir->files_handlers[j]->name);
+    //Printing
+    printf("Files inside current directory (%s):\n", directories[0]);
+    for (int i = 0; i < file_index; i++) {
+        printf("%s\n", files[i]);
     }
-}*/
+
+    printf("Directories inside current directory (%s):\n", directories[0]);
+    for (int i = 1; i < dir_index; i++) {
+        printf("%s\n", directories[i]);
+    }
+
+}

@@ -1,9 +1,11 @@
+#define FILESYSTEM_SIZE 8192
 #define BLOCK_SIZE 64
 #define FREE -1
 #define EOF_BLOCK -2
 #define TYPE_DIRECTORY 1
 #define TYPE_FILE 2
-#define NAME_MAX_LEN 16
+#define NAME_MAX_LEN 12
+#define PARENT_START_OFFSET 12
 #define START_BLOCK_OFFSET 16
 #define LAST_BLOCK_OFFSET 20
 #define TYPE_OFFSET 24
@@ -32,6 +34,7 @@ typedef struct {
 
 typedef struct {
     char name[NAME_MAX_LEN];
+    int parent_start;
     int start_block;
     int last_block;
     int type;
