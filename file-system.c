@@ -9,7 +9,9 @@
 
 #include "file-system.h"
 
-//UTILITIES
+///////////////////////////////////////UTILITIES///////////////////////////////////////
+
+//Finding free block in O(1)
 int allocate_block(FATFileSystem* fs) {
     if (fs->FAT->free_blocks == 0) return -1;
 
@@ -28,6 +30,7 @@ void free_block(FATFileSystem* fs, int block) {
     *pblock = block;
 }
 
+//Printing FAT
 void printFAT(FATFileSystem* fs) {
     int numblock = FILESYSTEM_SIZE/BLOCK_SIZE;
     
@@ -38,6 +41,7 @@ void printFAT(FATFileSystem* fs) {
     printf("%d]\n", fs->FAT->FAT[numblock-1]);
 }
 
+//eraseFile and eraseDir defragmentation
 void defragment(FileSystem* fs, int current_block, int previous_block, int pos) {
 
     while (1) {
@@ -72,7 +76,9 @@ void defragment(FileSystem* fs, int current_block, int previous_block, int pos) 
     
 }
 
-//LOAD FILE SYSTEM
+///////////////////////////////////////FILESYSTEM FUNCTIONS///////////////////////////////////////
+
+//Load file system
 FileSystem* loadFileSystem(char* name, int size_requested) {
     int blocks_required = (size_requested + BLOCK_SIZE -1) /BLOCK_SIZE;
     int total_size = sizeof(FATFileSystem) + sizeof(FATStruct) + blocks_required*8 + blocks_required*BLOCK_SIZE; 
@@ -158,6 +164,7 @@ FileSystem* loadFileSystem(char* name, int size_requested) {
     return fs;
 }
 
+//Unload file system
 void unloadFileSystem(FileSystem* fs) { 
     if (munmap(fs->FATfs, fs->total_size) == -1) {
         perror("Error unmapping filesystem");
@@ -165,12 +172,14 @@ void unloadFileSystem(FileSystem* fs) {
     }
     free(fs);
 }
- 
+
+//Create a new file
 void createFile(FileSystem* fs, char *filename) {
     int* parent_size = (int*)(fs->FATfs->data + (fs->current_dir * BLOCK_SIZE) + SIZE_OFFSET);
     int block = fs->current_dir;
     int* parent_last_block = (int*)(fs->FATfs->data + (fs->current_dir * BLOCK_SIZE) + LAST_BLOCK_OFFSET);
 
+    //Checking if file already exist
     while (block != EOF_BLOCK) {
         for (int i = 0; i < BLOCK_SIZE; i += 32) {
             int type = *((int*)(fs->FATfs->data + (block * BLOCK_SIZE) + i + TYPE_OFFSET));
@@ -249,6 +258,7 @@ void createFile(FileSystem* fs, char *filename) {
 
 }
 
+//Erase a file
 void eraseFile(FileSystem* fs, char* filename) {
     int block = fs->current_dir;
     int previous_block = block;
@@ -267,6 +277,7 @@ void eraseFile(FileSystem* fs, char* filename) {
                 int file_size = *((int*)(fs->FATfs->data + (block * BLOCK_SIZE) + i + SIZE_OFFSET));
                 
                 if (file_size) {
+                    //Cleaning FAT and freeing blocks
                     int start = *((int*)(fs->FATfs->data + (block * BLOCK_SIZE) + i + START_BLOCK_OFFSET));
 
                     while (start != EOF_BLOCK) {
@@ -317,6 +328,7 @@ void eraseFile(FileSystem* fs, char* filename) {
     printf("No file named %s in this directory\n", filename);
 }
 
+//Open a file (returning FileHandle)
 FileHandle* openFile(FileSystem* fs, char* filename) {
     int block = fs->current_dir;
     
@@ -354,10 +366,12 @@ FileHandle* openFile(FileSystem* fs, char* filename) {
     return NULL;
 }
 
+//Close a file
 void closeFile(FileSystem* fs, FileHandle* fh) {
     free(fh);
 }
 
+//Rewriting a file from the beginning
 void writeFile(FileSystem* fs, FileHandle *fh, char *buf, int size) {
     if (fh == NULL) {
         printf("Invalid file\n");
@@ -427,6 +441,7 @@ void writeFile(FileSystem* fs, FileHandle *fh, char *buf, int size) {
     }
 }
 
+//Writing in a file from current position
 void appendFile(FileSystem* fs, FileHandle *fh, char *buf, int size) {
 
     if (fh == NULL) {
@@ -502,6 +517,7 @@ void appendFile(FileSystem* fs, FileHandle *fh, char *buf, int size) {
     }
 }
 
+//Read the content of a file
 void readFile(FileSystem* fs, FileHandle *fh, char *buf, int size) {
 
     if (fh == NULL) {
@@ -574,6 +590,7 @@ void readFile(FileSystem* fs, FileHandle *fh, char *buf, int size) {
     memset(buf + read_bytes, '\0', 1);
 }
 
+//Move current position within the file
 void seekFile(FileSystem* fs, FileHandle *fh, int offset, int whence) {
 
     if (fh == NULL) {
@@ -634,6 +651,7 @@ void seekFile(FileSystem* fs, FileHandle *fh, int offset, int whence) {
     }
 }
 
+//Create a new directory
 void createDir(FileSystem* fs, char *dirname) {
     int* parent_size = (int*)(fs->FATfs->data + (fs->current_dir * BLOCK_SIZE) + SIZE_OFFSET);
     int block = fs->current_dir;
@@ -740,6 +758,7 @@ void createDir(FileSystem* fs, char *dirname) {
     }
 }
 
+//Erase a directory
 void eraseDir(FileSystem* fs, char *dirname) {
     int block = fs->current_dir;
     int previous_block = block;
@@ -761,6 +780,7 @@ void eraseDir(FileSystem* fs, char *dirname) {
                 int start = *((int*)(fs->FATfs->data + (block * BLOCK_SIZE) + i + START_BLOCK_OFFSET));
                 int temp = fs->current_dir;
                 
+                //Erasing all files and directories inside the directory
                 fs->current_dir = start;
 
                 while (dir_size > 32) {
@@ -822,6 +842,7 @@ void eraseDir(FileSystem* fs, char *dirname) {
     printf("No directory named %s in this directory\n", dirname);
 }
 
+//Navigate through the directories of the filesystem
 void changeDir(FileSystem* fs, char *dirname) {
 
     // dirname == "." -> remain in current directory
@@ -860,6 +881,7 @@ void changeDir(FileSystem* fs, char *dirname) {
     printf("No directory named %s in this directory\n", dirname);
 }
 
+//List all files and directories contained within the current directory
 void listDir(FileSystem* fs) {
     int block = fs->current_dir;
     int dir_size = *((int*)(fs->FATfs->data + (fs->current_dir * BLOCK_SIZE) + SIZE_OFFSET));
